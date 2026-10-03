@@ -1,0 +1,97 @@
+:root {
+  /* Palette « FP&A institutionnelle » : neutres marine, bleu = information,
+     cuivre = ce qu'on simule, rouge = budget et risque, vert réservé aux petits écarts favorables. */
+  --bg: #f5f7fa;
+  --panel: #ffffff;
+  --ink: #172033;
+  --muted: #5e6b7e;
+  --line: #dce2ea;
+  --soft: #eef2f6;
+  --accent: #1769aa;
+  --accent-ink: #ffffff;
+  --bar: #b8cce0;
+  --bar-hit: #1769aa;
+  --sel: #b87333;
+  --budget: #b42318;
+  --ok: #2b6e4a;
+  --ko: #b42318;
+  --warn: #8a5a1c;
+  --band: rgba(23, 105, 170, 0.14);
+  --shadow: 0 1px 2px rgba(23, 32, 51, 0.06), 0 2px 8px rgba(23, 32, 51, 0.04);
+  --radius: 10px;
+  color-scheme: light;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme='light']) {
+    --bg: #0f1620;
+    --panel: #16202c;
+    --ink: #e6ebf2;
+    --muted: #9aa7b8;
+    --line: #263241;
+    --soft: #1c2734;
+    --accent: #5aa2dd;
+    --accent-ink: #0b1220;
+    --bar: #3a5470;
+    --bar-hit: #5aa2dd;
+    --sel: #d49460;
+    --budget: #f06a5f;
+    --ok: #5fbf8a;
+    --ko: #f06a5f;
+    --warn: #d9a35a;
+    --band: rgba(90, 162, 221, 0.2);
+    --shadow: none;
+    color-scheme: dark;
+  }
+}
+:root[data-theme='dark'] {
+  --bg: #0f1620; --panel: #16202c; --ink: #e6ebf2; --muted: #9aa7b8; --line: #263241; --soft: #1c2734;
+  --accent: #5aa2dd; --accent-ink: #0b1220; --bar: #3a5470; --bar-hit: #5aa2dd; --sel: #d49460; --budget: #f06a5f;
+  --ok: #5fbf8a; --ko: #f06a5f; --warn: #d9a35a; --band: rgba(90, 162, 221, 0.2); --shadow: none; color-scheme: dark;
+}
+
+* { box-sizing: border-box; }
+html, body { margin: 0; }
+body {
+  background: var(--bg);
+  color: var(--ink);
+  font: 14px/1.45 system-ui, -apple-system, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+  font-variant-numeric: tabular-nums;
+  -webkit-font-smoothing: antialiased;
+}
+h1, h2, h3, h4 { margin: 0; line-height: 1.25; }
+h2 { font-size: 15px; font-weight: 650; }
+h3 { font-size: 13px; font-weight: 650; text-transform: uppercase; letter-spacing: 0.04em; color: var(--muted); }
+p { margin: 0.4em 0; }
+a { color: var(--accent); }
+button {
+  font: inherit; color: inherit; cursor: pointer; border: 1px solid var(--line); background: var(--panel);
+  border-radius: 7px; padding: 6px 11px; min-height: 32px;
+}
+button:hover:not(:disabled) { border-color: var(--accent); }
+button:disabled { opacity: 0.45; cursor: not-allowed; }
+button.primary { background: var(--accent); color: var(--accent-ink); border-color: var(--accent); font-weight: 600; }
+button.link { border: none; background: none; padding: 0; min-height: 0; color: var(--accent); text-decoration: underline; }
+input, select, textarea { font: inherit; color: inherit; background: var(--panel); border: 1px solid var(--line); border-radius: 6px; padding: 4px 6px; }
+input[type='range'] { width: 100%; accent-color: var(--accent); padding: 0; border: none; }
+input[type='checkbox'] { accent-color: var(--accent); width: 16px; height: 16px; }
+:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.panel { background: var(--panel); border: 1px solid var(--line); border-radius: var(--radius); box-shadow: var(--shadow); }
+.muted { color: var(--muted); }
+.small { font-size: 12px; }
+.num { text-align: right; white-space: nowrap; }
+.pos { color: var(--ok); }
+.neg { color: var(--ko); }
+table { border-collapse: collapse; width: 100%; }
+th, td { padding: 6px 8px; border-bottom: 1px solid var(--line); text-align: left; vertical-align: top; }
+th { font-size: 12px; font-weight: 600; color: var(--muted); }
+.table-wrap { overflow-x: auto; }
+.print-only { display: none; }
+.sr-only { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); }
+.tip { border-bottom: 1px dotted var(--muted); cursor: help; }
+
+@media print {
+  @page { size: A4 portrait; margin: 12mm; }
+  body { background: #fff; color: #000; }
+  .screen-only { display: none !important; }
+  .print-only { display: block !important; }
+}

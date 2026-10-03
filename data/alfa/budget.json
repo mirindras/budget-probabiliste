@@ -1,0 +1,21 @@
+{
+  "_mention": "Données synthétiques : société fictive ALFA Distribution, aucune donnée d'entreprise réelle.",
+  "libelle": "ALFA Distribution, budget 2027",
+  "exercice": 2027,
+  "unite": "GAr",
+  "bu": ["Boissons", "Epicerie", "Hygiene"],
+  "ca": [40.0, 30.0, 15.0],
+  "cout_matiere": [23.2, 18.9, 8.9],
+  "part_importee": [0.30, 0.50, 0.60],
+  "transport": { "carburant": 2.0, "sous_traitance": 2.6, "autres": 1.4 },
+  "masse_salariale": 10.5,
+  "frais_commerciaux": { "total": 4.5, "part_variable": 0.6 },
+  "frais_generaux": 3.6,
+  "cours_budget_eur_mga": 5200,
+  "ebitda": 9.4,
+  "saisonnalite": {
+    "Boissons": [0.095, 0.090, 0.085, 0.075, 0.070, 0.065, 0.065, 0.070, 0.080, 0.090, 0.100, 0.115],
+    "Epicerie": [0.080, 0.078, 0.080, 0.080, 0.082, 0.080, 0.080, 0.082, 0.085, 0.085, 0.088, 0.100],
+    "Hygiene": [0.082, 0.080, 0.083, 0.082, 0.083, 0.082, 0.083, 0.083, 0.084, 0.084, 0.085, 0.089]
+  }
+}

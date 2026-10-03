@@ -1,0 +1,52 @@
+name: Recette et publication
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  recette:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - name: Types
+        run: npm run check
+      - name: Recette du moteur (Vitest) et couverture
+        run: npm run test:coverage
+      - name: Construction
+        run: npm run build
+      - name: Navigateur de la recette d'interface
+        run: npx playwright install --with-deps chromium
+      - name: Recette de l'interface (Playwright)
+        run: npm run test:e2e
+      - uses: actions/upload-pages-artifact@v3
+        if: github.ref == 'refs/heads/main' && github.event_name != 'pull_request'
+        with:
+          path: dist
+
+  publication:
+    if: github.ref == 'refs/heads/main' && github.event_name != 'pull_request'
+    needs: recette
+    runs-on: ubuntu-latest
+    permissions:
+      pages: write
+      id-token: write
+    environment:
+      name: github-pages
+      url: ${{ steps.deploiement.outputs.page_url }}
+    steps:
+      - id: deploiement
+        uses: actions/deploy-pages@v4

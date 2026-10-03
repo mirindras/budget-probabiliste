@@ -1,0 +1,46 @@
+{
+  "_mention": "Données synthétiques : société fictive ALFA Distribution, aucune donnée d'entreprise réelle.",
+  "version": "v2",
+  "statut": "gele",
+  "hypotheses": [
+    { "code": "H01", "libelle": "Volume Boissons", "proprietaire": "Directeur commercial Boissons", "unite": "facteur", "grain": "BU Boissons, tous canaux", "p10": 0.955, "p50": 0.995, "p90": 1.025, "justification": "Tendance 5 ans, élasticité prix, carnet de commandes GMS. Perte de grand compte exclue (portée par E02).", "statut": "valide" },
+    { "code": "H02", "libelle": "Volume Épicerie", "proprietaire": "Directeur commercial Épicerie", "unite": "facteur", "grain": "BU Épicerie, tous canaux", "p10": 0.965, "p50": 1.000, "p90": 1.025, "justification": "Tendance 5 ans, référencements 2027 signés. Perte de grand compte exclue (portée par E02).", "statut": "valide" },
+    { "code": "H03", "libelle": "Volume Hygiène", "proprietaire": "Directeur commercial Hygiène", "unite": "facteur", "grain": "BU Hygiène, tous canaux", "p10": 0.960, "p50": 1.000, "p90": 1.040, "justification": "Marché stable, dispersion historique symétrique sur 5 ans.", "statut": "valide" },
+    { "code": "H04", "libelle": "Prix net réalisé", "proprietaire": "Directeur commercial", "unite": "facteur", "grain": "total", "p10": 0.990, "p50": 1.000, "p90": 1.005, "justification": "Hausse tarifaire de janvier négociée ; risque de remises supplémentaires en GMS.", "statut": "valide" },
+    { "code": "H05", "libelle": "Mix produits et canaux", "proprietaire": "Contrôle de gestion", "unite": "points de marge brute", "grain": "total", "p10": -0.4, "p50": 0.0, "p90": 0.4, "justification": "Écarts de mix observés sur 3 exercices, symétriques.", "statut": "valide" },
+    { "code": "H06", "libelle": "Change EUR/MGA, cours moyen", "proprietaire": "Trésorerie", "unite": "MGA pour 1 EUR", "grain": "total", "depart": 5100, "derive_annuelle": 0.04, "volatilite_mensuelle": 0.018, "justification": "Dernier cours connu 5 100 ; dérive et volatilité estimées sur 60 mois.", "statut": "valide" },
+    { "code": "H07", "libelle": "Prix d'achat importés, en EUR", "proprietaire": "Achats", "unite": "facteur", "grain": "total", "p10": 0.980, "p50": null, "p90": 1.025, "justification": "Contrats fournisseurs annuels, indexation partielle sur les cours mondiaux.", "statut": "valide" },
+    { "code": "H08", "libelle": "Prix d'achat locaux", "proprietaire": "Achats", "unite": "facteur", "grain": "total", "p10": 0.990, "p50": 1.000, "p90": 1.020, "justification": "Inflation domestique, en partie importée.", "statut": "valide" },
+    { "code": "H09", "libelle": "Tarifs transporteurs", "proprietaire": "Supply chain", "unite": "facteur", "grain": "total", "p10": 0.995, "p50": 1.010, "p90": 1.040, "justification": "Renégociation annuelle ; carburant et pièces importés.", "statut": "valide" },
+    { "code": "H10", "libelle": "Masse salariale", "proprietaire": "RH", "unite": "facteur", "grain": "total", "p10": 0.995, "p50": 1.000, "p90": 1.015, "justification": "Accord salarial signé ; risque de rattrapage en cas d'inflation.", "statut": "valide" },
+    { "code": "H11", "libelle": "Frais commerciaux", "proprietaire": "Marketing", "unite": "facteur", "grain": "total", "p10": 0.970, "p50": 1.000, "p90": 1.040, "justification": "Plan promotionnel ; relances possibles si les volumes décrochent.", "statut": "valide" },
+    { "code": "H12", "libelle": "Frais généraux", "proprietaire": "DAF", "unite": "facteur", "grain": "total", "p10": 0.990, "p50": 1.000, "p90": 1.030, "justification": "Énergie, maintenance, informatique : sensibles au change.", "statut": "valide" }
+  ],
+  "evenements": [
+    { "code": "E01", "libelle": "Révision du prix du carburant", "proprietaire": "Supply chain", "p": 0.35, "amplitude": [0.08, 0.15], "duree": "fin", "cible": "carburant de la flotte propre", "justification": "Environ 0,4 révision par an sur 5 ans, de +8 % à +15 %.", "statut": "valide" },
+    { "code": "E02", "libelle": "Perte d'un grand compte GMS", "proprietaire": "Directeur commercial", "p": 0.15, "amplitude": [0.04, 0.08], "duree": "fin", "cible": "volumes Boissons et Épicerie", "justification": "Deux pertes de comptes en 5 ans, poids de 4 % à 8 % des volumes.", "statut": "valide" },
+    { "code": "E03", "libelle": "Retard de navire (effet bateau)", "proprietaire": "Supply chain", "p": 0.25, "amplitude": [0.15, 0.25], "surcout": [0.03, 0.06], "duree": "mois", "cible": "volumes Épicerie et Hygiène", "justification": "Journal des ruptures : un retard significatif tous les 4 ans en moyenne.", "statut": "valide" }
+  ],
+  "correlations_rang": [
+    ["H06", "E01", 0.5, "carburant importé, payé en devises"],
+    ["H06", "H08", 0.4, "inflation importée"],
+    ["H06", "H09", 0.4, "carburant et pièces détachées importés"],
+    ["H06", "H12", 0.3, "énergie, maintenance, informatique"],
+    ["H06", "H10", 0.2, "pression salariale en période d'inflation"],
+    ["H06", "H01", -0.2, "pouvoir d'achat des ménages"],
+    ["H06", "H02", -0.2, "pouvoir d'achat des ménages"],
+    ["H06", "H03", -0.2, "pouvoir d'achat des ménages"],
+    ["H04", "H01", -0.3, "élasticité prix"],
+    ["H04", "H02", -0.3, "élasticité prix"],
+    ["H04", "H03", -0.3, "élasticité prix"],
+    ["H01", "H02", 0.5, "demande commune"],
+    ["H02", "H03", 0.5, "demande commune"],
+    ["H01", "H03", 0.4, "demande commune"],
+    ["E01", "H09", 0.6, "répercussion par les transporteurs"],
+    ["H08", "H12", 0.3, "inflation domestique"],
+    ["H11", "H01", -0.3, "promotions de relance quand les volumes décrochent"],
+    ["H11", "H02", -0.3, "promotions de relance quand les volumes décrochent"]
+  ],
+  "bruit_volumes": { "phi": 0.6, "sigma_mensuel": 0.03 },
+  "simulation": { "n": 10000, "graine": 2027 }
+}
