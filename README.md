@@ -259,3 +259,30 @@ Décisions prises là où la SFD laissait une marge ; chacune est tracée dans l
 ## Limites
 
 Le modèle mesure l'incertitude qu'on lui décrit, rien de plus : les risques absents du registre, les corrélations de crise et les chocs extrêmes relèvent des stress tests et d'une version 2. Données de démonstration : aucun chiffre ne décrit une entreprise réelle.
+
+## Feuille de route
+
+État : octobre 2026.
+
+### V1, livrée
+
+- [x] Registre d'hypothèses et d'événements versionné, avec propriétaire et justification
+- [x] Simulation Monte Carlo corrélée (copule, AR(1), hypercube latin) : 10 000 itérations en moins d'une seconde
+- [x] Probabilité d'atteinte, P10 / P50 / P90, EaR 90, CVaR 10 et origine du risque
+- [x] Leviers, paquets de décisions et stress tests à aléa commun
+- [x] Atterrissage en cours d'année, backtest et calibration des fourchettes
+- [x] Import et export Excel, lien de partage, note CODIR d'une page, usage hors ligne
+- [x] Contrôles C01 à C12, concordance avec le prototype Python, 19 cas de recette sur 20 automatisés
+
+### Prochaines étapes
+
+- [ ] Prise en main par trois utilisateurs non techniques (TC20, dernier cas de recette ouvert)
+- [ ] Écarts réel / budget décomposés par hypothèse (volume, prix, change) en mode atterrissage
+- [ ] Prévision glissante sur 12 mois
+
+### V2
+
+- [ ] Corrélations de crise : un second régime où les hypothèses décrochent ensemble
+- [ ] Queues épaisses : chocs extrêmes plus fréquents que ne le prévoit le modèle actuel (copule de Student en option)
+- [ ] Plusieurs entités et consolidation, avec le change propre à chaque entité
+- [ ] Import direct d'un export de grand livre, sans passer par les modèles Excel
