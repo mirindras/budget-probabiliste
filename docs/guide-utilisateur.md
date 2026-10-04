@@ -13,7 +13,7 @@ On passe de l'une à l'autre par le bouton en haut de l'écran ; l'outil retient
 
 - **Le grand pourcentage** est la probabilité d'atteindre le budget : la part des 10 000 années simulées où l'EBITDA atteint au moins le chiffre budgété.
 - **Le graphique** montre ces 10 000 années. Les barres foncées sont celles qui atteignent le budget ; la ligne rouge pointillée est le budget.
-- **Année défavorable** (P10) : 1 chance sur 10 de faire moins. **Risque (EaR 90)** : ce qu'une telle année coûte par rapport au résultat médian.
+- **Année défavorable** (P10) : 1 chance sur 10 de faire moins. **Risque (EaR 90)** : ce qu'une telle année coûte par rapport au résultat médian (P50, 1 chance sur 2 de faire moins).
 - Survolez une barre pour voir sa fourchette et son nombre d'itérations. Survolez un libellé souligné pour sa définition.
 
 ## 2. Tester une action (1 minute)

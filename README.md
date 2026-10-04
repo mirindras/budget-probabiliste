@@ -2,6 +2,8 @@
 
 **Quelle chance avez-vous de tenir votre budget, et que faire pour l'améliorer ?**
 
+FP&A probabiliste : budget, atterrissage, risque, backtest et arbitrages, sur une même distribution de résultats.
+
 [![Ouvrir l'outil](https://img.shields.io/badge/Ouvrir_l'outil-mirindras.github.io%2Fbudget--probabiliste-1769AA?style=for-the-badge)](https://mirindras.github.io/budget-probabiliste/)
 
 [![Recette et publication](https://github.com/mirindras/budget-probabiliste/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/mirindras/budget-probabiliste/actions/workflows/ci.yml)
@@ -35,9 +37,9 @@ Résultat : le CODIR vote un budget sans savoir quelle est sa marge d'erreur, ni
 
 | Question du CODIR | Réponse sur l'exemple ALFA 2027 |
 | --- | --- |
-| Quelle chance avons-nous d'atteindre l'EBITDA budgété ? | **30 %**, soit environ 1 chance sur 3 ; le résultat le plus probable est de 8,6 GAr, 0,8 GAr sous le budget |
-| Combien perd-on dans une année défavorable, à 1 chance sur 10 ? | l'EBITDA tombe à **6,7 GAr**, soit 1,9 GAr de moins que le résultat le plus probable |
-| D'où vient le risque ? | à **68 %** de l'environnement macroéconomique : le taux de change et ce qu'il entraîne (prix locaux, carburant, frais généraux) |
+| Quelle chance avons-nous d'atteindre l'EBITDA budgété ? | **30 %**, soit environ 1 chance sur 3 ; le résultat médian est de 8,6 GAr, 0,8 GAr sous le budget |
+| Combien perd-on dans une année défavorable, à 1 chance sur 10 ? | l'EBITDA tombe à **6,7 GAr**, soit 1,9 GAr de moins que le résultat médian |
+| D'où vient le risque ? | à **68 %** de l'environnement macroéconomique : le taux de change et ce qu'il entraîne (prix locaux, carburant, frais généraux). Part de la variance de l'EBITDA simulé, sur les données synthétiques ALFA : un résultat du modèle, pas une observation sur une entreprise réelle |
 | Quelles actions améliorent les chances, et à quel coût ? | une hausse tarifaire ciblée et des économies de frais généraux portent la probabilité à **40 %**, pour 0,05 GAr de coût direct |
 
 ## La décision qu'il éclaire
@@ -50,6 +52,21 @@ L'outil ne remplace pas le budget : le budget reste l'objectif. Il mesure son ex
 Le choix dépend de ce que le CODIR redoute le plus : rater le budget, ou subir une mauvaise année. L'outil ne tranche pas ; il rend l'arbitrage explicite.
 
 ![Les décisions sur la table : effet de chaque action et options A et B](docs/images/decisions.png)
+
+## Vocabulaire
+
+Chaque terme a un seul sens, dans l'outil comme dans ce document. Les chiffres viennent de 10 000 années simulées.
+
+| Terme | Définition | Notation |
+| --- | --- | --- |
+| Probabilité d'atteinte | part des années simulées où l'EBITDA atteint au moins le budget | |
+| Résultat médian | autant de chances de faire moins que de faire mieux ; ce n'est pas le « plus probable » au sens du mode | P50 |
+| Année défavorable | 1 chance sur 10 de faire moins | P10 |
+| Année favorable | 1 chance sur 10 de faire mieux | P90 |
+| Objectif à 80 % de chances | niveau atteint ou dépassé dans 8 années simulées sur 10 | P20 |
+| Risque | perte d'une année défavorable par rapport au résultat médian | EaR 90 = P50 − P10 |
+| 10 % pires cas | moyenne de l'EBITDA sur les 10 % d'années les plus basses | CVaR 10 |
+| Part du risque | part de la variance de l'EBITDA simulé portée par une hypothèse ou un bloc (corrélation de rang au carré, normalisée à 100 %) ; un résultat du modèle, pas une mesure du risque réel | |
 
 ## Comment ça fonctionne
 
@@ -79,7 +96,7 @@ Chaque action est testée sur exactement les mêmes 10 000 années que le budget
 **Synthèse CODIR**, la vue par défaut, pour le CFO et le CODIR :
 
 - la réponse en une phrase et une jauge (« Le budget a 30 % de chances d'être atteint ») ;
-- quatre chiffres clés en GAr : résultat le plus probable, année défavorable, année favorable, objectif sûr à 80 % ;
+- quatre chiffres clés en GAr : résultat médian, année défavorable, année favorable, objectif à 80 % de chances ;
 - le pourquoi : la part du risque par famille, et les hypothèses qui pèsent le plus, expliquées en clair ;
 - les décisions sur la table : chaque action avec son effet sur les chances, sur l'année défavorable et son coût, puis les options A et B à arbitrer ;
 - les « et si » : ce que deviendraient les chances après une dépréciation brutale de l'ariary, la perte de deux grands comptes ou un choc carburant.
@@ -106,14 +123,14 @@ Guide d'une page : [docs/guide-utilisateur.md](docs/guide-utilisateur.md). Forma
 - **Le budget n'est pas pessimiste à 30 % par hasard.** Il additionne des valeurs centrales légèrement optimistes (volumes Boissons au-dessus de l'avis de leur responsable, change budgété sous le cours attendu) et ignore les chocs datés, qui frappent au moins une fois dans 58 % des années.
 - **Une année défavorable n'est pas une catastrophe.** C'est un ariary un peu plus faible, des volumes un peu plus bas et une révision du carburant : un scénario plausible, donc utile pour préparer des parades.
 - **Le change est le risque à piloter en priorité.** L'entreprise encaisse un choc carburant de +25 % (les chances passent de 30 % à 21 %), mais pas une dépréciation brutale de l'ariary (les chances tombent à 1 %).
-- **Réduire le risque n'augmente pas toujours les chances.** La couverture de change resserre la distribution, ce qui protège l'année défavorable mais éloigne aussi les bonnes années, puisque le résultat le plus probable est sous le budget.
+- **Réduire le risque n'augmente pas toujours les chances.** La couverture de change resserre la distribution, ce qui protège l'année défavorable mais éloigne aussi les bonnes années, puisque le résultat médian est sous le budget.
 - **Les fourchettes des responsables sont trop étroites.** Rejouées sur 2024 à 2026, elles n'ont couvert que 60 % des réalisés au lieu des 80 % visés. L'outil propose de les élargir d'un facteur 1,5.
 
 ## Profondeur technique
 
 Pour les lecteurs Data, Software ou Quant, voici ce qui garantit des chiffres justes et reproductibles.
 
-- **Simulation Monte Carlo en hypercube latin** (LHS) : chaque loi est couverte uniformément ; 10 000 itérations donnent la probabilité à ±0,6 point près.
+- **Simulation Monte Carlo en hypercube latin** (LHS) : chaque loi est couverte uniformément ; sur le protocole de validation ALFA, 10 000 tirages donnent une précision empirique d'environ ±0,6 point sur la probabilité d'atteinte (intervalle à 95 %).
 - **Lois choisies par règle** à partir des fourchettes P10 / P50 / P90 : normale, split-normale pour les risques asymétriques, lognormale pour les prix, PERT pour les grandeurs bornées.
 - **Dépendances** : corrélations de rang (Spearman) converties pour une copule gaussienne, décomposition de Cholesky, correction de Higham si la matrice saisie est incohérente.
 - **Dynamiques mensuelles** : marche aléatoire du change conditionnée au choc annuel, bruit AR(1) des volumes recentré sur la saisonnalité, événements Bernoulli datés.
@@ -286,3 +303,17 @@ Le modèle mesure l'incertitude qu'on lui décrit, rien de plus : les risques ab
 - [ ] Queues épaisses : chocs extrêmes plus fréquents que ne le prévoit le modèle actuel (copule de Student en option)
 - [ ] Plusieurs entités et consolidation, avec le change propre à chaque entité
 - [ ] Import direct d'un export de grand livre, sans passer par les modèles Excel
+
+La V1 part de deux classeurs Excel. La cible est de brancher l'outil sur la chaîne de données de l'entreprise, Excel restant une porte d'entrée parmi d'autres :
+
+```mermaid
+%%{init: {'theme': 'base', 'themeVariables': {'primaryColor': '#EEF2F6', 'primaryBorderColor': '#1769AA', 'primaryTextColor': '#172033', 'lineColor': '#5E6B7E', 'fontFamily': 'system-ui, sans-serif'}}}%%
+flowchart LR
+    ERP["ERP"] --> GL["Grand livre"] --> DW["Entrepôt de données"]
+    DW --> ACT["Réalisé"]
+    DW --> DRV["Inducteurs"]
+    DRV --> BUD["Budget et prévision"]
+    ACT --> OUT["FP&A probabiliste"]
+    BUD --> OUT
+    XL["Classeurs Excel (V1)"] -.-> OUT
+```

@@ -297,7 +297,7 @@ Pourquoi la persistance compte : avec φ = 0,8, l'écart-type annuel vaut 2,4 fo
 
 ## 7. Moteur de simulation (M4)
 
-10 000 itérations en hypercube latin, graine fixe : la probabilité d'atteinte est connue à ±0,6 point près et le P10 à ±35 MAr (intervalles à 95 %).
+10 000 itérations en hypercube latin, graine fixe. Sur le protocole de validation ALFA (section 7.4), la précision empirique mesurée est d'environ ±0,6 point sur la probabilité d'atteinte et ±35 MAr sur le P10 (intervalles à 95 %). Ce n'est pas une propriété générale de 10 000 tirages : elle dépend de la forme de la distribution et de la position du budget.
 
 ### 7.1 Paramètres
 

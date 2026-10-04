@@ -81,7 +81,7 @@
       <div class="answer">
         <span class="eyebrow">Budget {exercice} · EBITDA de {gar(budget)}</span>
         <h2 id="reponse">Le budget a <em>{pct(r.base.prob)}</em> de chances d'être atteint.</h2>
-        <p class="lead">Le résultat le plus probable est de {gar(r.base.p50)}, {ecart(r.base.p50)}. Une année défavorable, à 1 chance sur 10, donnerait {gar(r.base.p10)}.</p>
+        <p class="lead">Le résultat médian, avec autant de chances de faire mieux que moins, est de {gar(r.base.p50)}, {ecart(r.base.p50)}. Une année défavorable, à 1 chance sur 10, donnerait {gar(r.base.p10)}.</p>
         <span class="pill {verdict.ton}">{verdict.texte}</span>
         {#if sel}
           <div class="sel" role="status">
@@ -100,7 +100,7 @@
     <!-- 2. Les chiffres clés -->
     <section class="kpis" aria-label="Chiffres clés">
       <div class="kpi">
-        <span class="k">Résultat le plus probable</span>
+        <span class="k tip" title="P50 : 1 chance sur 2 de faire moins, 1 chance sur 2 de faire mieux">Résultat médian</span>
         <span class="v">{gar(shown!.p50)}</span>
         <span class="s">{ecart(shown!.p50)}</span>
       </div>
@@ -115,7 +115,7 @@
         <span class="s">1 chance sur 10 de faire mieux</span>
       </div>
       <div class="kpi">
-        <span class="k tip" title="P20 : objectif atteint dans 8 années simulées sur 10">Objectif sûr à 80 %</span>
+        <span class="k tip" title="P20 : atteint ou dépassé dans 8 années simulées sur 10">Objectif à 80 % de chances</span>
         <span class="v">{gar(shown!.p20)}</span>
         <span class="s">tenu 8 années sur 10</span>
       </div>
@@ -134,7 +134,7 @@
         {:else}
           <div class="blocks" aria-label="Part du risque par famille">
             {#each blocks as b (b.code)}
-              <div class="block {b.code}" style="flex: {Math.max(b.part, 0.06)}" title="{b.libelle} : {pct(b.part)} du risque">
+              <div class="block {b.code}" style="flex: {Math.max(b.part, 0.06)}" title="{b.libelle} : {pct(b.part)} de la variance de l'EBITDA simulé">
                 <b>{pct(b.part)}</b><span>{b.libelle}</span>
               </div>
             {/each}
@@ -147,6 +147,7 @@
               </li>
             {/each}
           </ol>
+          <p class="small muted">Part de la variance de l'EBITDA simulé (corrélation de rang au carré, normalisée à 100 %). C'est un résultat du modèle, qui découle des fourchettes et corrélations saisies au registre, pas une mesure du risque réel de l'entreprise{#if app.isAlfa} ; ici, données synthétiques ALFA{/if}.</p>
         {/if}
       </section>
     </div>
@@ -217,7 +218,7 @@
             <h4>{c.libelle}</h4>
             <p class="small muted">{s?.regle ?? 'Dépréciation brutale et choc carburant ensemble'}</p>
             <p class="big">{pct(c.stats.prob)} <span class="small muted">de chances</span></p>
-            <p class="small">Résultat le plus probable : {gar(c.stats.p50)}</p>
+            <p class="small">Résultat médian : {gar(c.stats.p50)}</p>
             {#if c.code !== 'S1+S3'}
               <label class="sim"><input type="checkbox" checked={active(c.code)} onchange={() => app.toggleCase(c.code as CaseCode)} data-testid="case-{c.code}" /> Simuler</label>
             {/if}

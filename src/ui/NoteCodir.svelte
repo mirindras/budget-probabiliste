@@ -35,7 +35,7 @@
       <li><b>Q1, probabilité :</b> {pct5(r.base.prob)}. Le résultat médian attendu est de {gar(r.base.p50)}, {num(Math.abs(budget - r.base.p50))} GAr {r.base.p50 < budget ? 'sous' : 'au-dessus du'} budget.</li>
       <li><b>Q2, risque :</b> une année défavorable à 1 chance sur 10 donne {gar(r.base.p10)}. Dans les 10 % pires cas, l'EBITDA moyen tombe à {gar(r.base.cvar10)}.</li>
       <li><b>Q3, origine :</b>
-        {#if topBlock}le bloc {topBlock.libelle.toLowerCase()} porte {pct(topBlock.part)} du risque{#if topBlock.code === 'macro'} : le change et ce qu'il entraîne (prix locaux, carburant, frais généraux){/if}.{/if}
+        {#if topBlock}le bloc {topBlock.libelle.toLowerCase()} porte {pct(topBlock.part)} de la variance de l'EBITDA simulé{#if topBlock.code === 'macro'} : le change et ce qu'il entraîne (prix locaux, carburant, frais généraux){/if}.{/if}
         {#if topCommercial}{labels[topCommercial.code]} est le premier risque commercial.{/if}
       </li>
       <li><b>Q4, leviers :</b>
