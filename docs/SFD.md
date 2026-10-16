@@ -35,7 +35,7 @@ Les scénarios « bas » et « haut » habituels appliquent ±10 % à toutes les
 | --- | --- | --- |
 | Q1 | Quelle est la probabilité d'atteindre l'EBITDA budgété ? | Probabilité d'atteinte |
 | Q2 | Dans un scénario défavorable à 1 chance sur 10, combien perd-on ? | EBITDA-at-Risk 90 (P50 moins P10) |
-| Q3 | Quelles hypothèses expliquent l'essentiel du risque ? | Contribution à la variance, effets isolé et total |
+| Q3 | Quelles hypothèses expliquent l'essentiel du risque ? | Contribution relative, effets isolé et total |
 | Q4 | Quelles actions améliorent le plus la probabilité, et à quel coût ? | Gain en points de probabilité et variation de l'EaR, nets du coût du levier |
 
 ### 1.3 Périmètre
@@ -242,7 +242,7 @@ Atelier de 45 minutes par propriétaire, conduit par le FP&A. L'ordre des questi
 | --- | --- |
 | R-HY-01 | P10 < P50 < P90, strictement. |
 | R-HY-02 | Une fourchette P10-P90 plus étroite que la moitié de l'intervalle historique équivalent exige une justification validée par le CFO. |
-| R-HY-03 | Le coefficient k du backtest écarte les bornes du P50 : P10 devient P50 - k × (P50 - P10), P90 devient P50 + k × (P90 - P50). |
+| R-HY-03 | Le coefficient k du backtest écarte les bornes du P50 : P10 devient P50 - k × (P50 - P10), P90 devient P50 + k × (P90 - P50). Pour une lognormale, l'écart se fait en logarithme : la médiane est conservée et σ est multiplié par k. Pour le change, k multiplie la volatilité mensuelle. Une loi PERT n'est pas élargie : ses bornes sont physiques. k est fini, strictement positif et au plus 3 ; une grandeur positive doit le rester après élargissement. |
 | R-HY-04 | Toute modification après gel crée une nouvelle version du registre. Les runs antérieurs ne sont plus présentables. |
 | R-HY-05 | Un événement porte une probabilité, une amplitude, une date et une durée. Un impact sans probabilité est un stress test, pas un événement. |
 | R-HY-06 | Pas de double comptage : si E02 existe, la perte d'un grand compte est exclue de la fourchette de H01 et H02. |
@@ -400,7 +400,7 @@ Lecture pour le CFO : la simulation n'est pas pessimiste. Le budget additionne d
 
 ## 9. Analyses de risque (M6)
 
-Dans l'exemple ALFA, le budget a 30 % de chances d'être atteint, une année défavorable à 1 chance sur 10 perd 2,0 GAr sur le médian, et le bloc macroéconomique porte 68 % du risque.
+Dans l'exemple ALFA, le budget a 30 % de chances d'être atteint, une année défavorable à 1 chance sur 10 perd 2,0 GAr sur le médian, et le bloc macroéconomique concentre 68 % des contributions relatives au risque.
 
 ### 9.1 Indicateurs
 
@@ -420,11 +420,13 @@ La même distribution chiffre d'autres objectifs : 8,5 GAr a 53 % de chances d'�
 
 | Méthode | Calcul | Question traitée |
 | --- | --- | --- |
-| Contribution à la variance | carré de la corrélation de rang entre hypothèse et EBITDA, normalisé à 100 % | classement et regroupement par blocs |
+| Contribution relative | carré de la corrélation de rang entre hypothèse et EBITDA, ramené à 100 % | classement et regroupement par blocs ; pas une décomposition de la variance, les hypothèses corrélées se recouvrant |
 | Effet total | P50 de l'EBITDA quand l'hypothèse est autour de son P10 puis de son P90 (bandes P5-P15 et P85-P95) | ce que l'entreprise subit, corrélations comprises |
 | Effet isolé | EBITDA quand l'hypothèse seule passe de P10 à P90, les autres à leur P50 | ce qu'une action ciblée sur cette seule hypothèse peut changer |
 
 Par blocs : macroéconomie (H06, H08, H09, H10, H12, E01) 68 %, commercial (H01 à H05, H11, E02) 28 %, approvisionnement (H07, E03) 4 %.
+
+Limite : la contribution relative classe les hypothèses ; elle ne décompose pas la variance. Les hypothèses étant corrélées (change, carburant, frais généraux), une même part de risque est comptée chez plusieurs d'entre elles, et la somme ramenée à 100 % n'a pas de sens causal. Une attribution adaptée aux variables dépendantes (effets de Shapley sur la variance, avec définition et tests de validation) est prévue en version 2.
 
 &#91;embedded content: prototype ALFA, 10 000 itérations · effet isolé : autres hypothèses au P50 ; effet total : P50 conditionnel autour du P10 puis du P90\]
 
@@ -596,7 +598,7 @@ La restitution vit dans l'outil : un écran unique pour explorer, et une note CO
 
 - **Q1, probabilité :** 30 %. Le résultat médian attendu est de 8,6 GAr, 0,8 GAr sous le budget.
 - **Q2, risque :** une année défavorable à 1 chance sur 10 donne 6,6 GAr. Dans les 10 % pires cas, l'EBITDA moyen tombe à 5,9 GAr.
-- **Q3, origine :** le change et ce qu'il entraîne (prix locaux, carburant, frais généraux) portent 68 % du risque. Le volume Boissons est le premier risque commercial.
+- **Q3, origine :** le change et ce qu'il entraîne (prix locaux, carburant, frais généraux) concentrent 68 % des contributions relatives au risque. Le volume Boissons est le premier risque commercial.
 - **Q4, leviers :** hausse tarifaire ciblée, +7 points ; économies de frais généraux, +4 points. La couverture de change réduit le risque de 21 % mais retire 7 points de probabilité.
 - **Décision attendue :** valider le paquet A (probabilité 40 %), ou le paquet B si le CODIR privilégie la protection du bas de fourchette (P10 à 7,4 GAr au lieu de 7,0).
 - **Limites :** données de démonstration, corrélations estimées sur 5 ans, risques hors registre non couverts. Référence : outil v1.0, registre v2, graine 2027, 10 000 itérations.
@@ -918,6 +920,12 @@ E[x] = \frac{a + 4m + b}{6}, \qquad \alpha = 1 + 4\,\frac{m - a}{b - a}, \qquad 
 
 ```latex
 P'_{10} = P_{50} - k\,(P_{50} - P_{10}), \qquad P'_{90} = P_{50} + k\,(P_{90} - P_{50})
+```
+
+Lognormale, médiane m conservée :
+
+```latex
+\sigma' = k\,\sigma, \qquad P'_{10} = m\,e^{-k\sigma z_{0,9}}, \qquad P'_{90} = m\,e^{k\sigma z_{0,9}}
 ```
 
 ## Annexe C. Dynamiques temporelles

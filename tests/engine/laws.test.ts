@@ -80,6 +80,26 @@ describe('conversion des fourchettes (annexe B)', () => {
     const nm = makeLaw(h({ p10: 0.96, p50: 1, p90: 1.04, k: 2 }));
     expect(nm.p10).toBeCloseTo(0.92, 12);
   });
+  test('R-HY-03 lognormale : k élargit σ en logarithme et conserve la médiane', () => {
+    const ref = makeLaw(h({ code: 'H07', p10: 0.9, p50: null, p90: 1.2 }));
+    const law = makeLaw(h({ code: 'H07', p10: 0.9, p50: null, p90: 1.2, k: 2 }));
+    expect(ref.p50).toBeCloseTo(Math.sqrt(0.9 * 1.2), 12);
+    expect(law.p50).toBeCloseTo(ref.p50, 12);
+    expect(percentile(sample(law), 0.5)).toBeCloseTo(ref.p50, 3);
+    const s1 = Math.log(ref.quantile(1) / ref.p50);
+    const s2 = Math.log(law.quantile(1) / law.p50);
+    expect(s2).toBeCloseTo(2 * s1, 12);
+    expect(law.p10).toBeCloseTo(ref.p50 * (0.9 / ref.p50) ** 2, 12);
+    expect(law.p90).toBeCloseTo(ref.p50 * (1.2 / ref.p50) ** 2, 12);
+    expect(law.cdf(law.p10)).toBeCloseTo(0.1, 10);
+    expect(law.p10).toBeGreaterThan(0);
+  });
+  test('PERT : k ne franchit pas les bornes physiques', () => {
+    const a = makeLaw(h({ p10: 0.95, p50: 1, p90: 1.08, min: 0.9, max: 1.2 }));
+    const b = makeLaw(h({ p10: 0.95, p50: 1, p90: 1.08, min: 0.9, max: 1.2, k: 2 }));
+    expect(b.p10).toBe(a.p10);
+    expect(b.p90).toBe(a.p90);
+  });
   test('la marche aléatoire n\'a pas de quantile direct', () => {
     expect(() => makeLaw(h({ code: 'H06', depart: 5100, derive_annuelle: 0.04, volatilite_mensuelle: 0.018 }))).toThrow();
   });
@@ -94,5 +114,18 @@ describe('règles de saisie', () => {
     expect(validateHypothesis(h({ p10: 1.1, p50: null, p90: 1.05 }))[0]).toMatch(/P10 < P90/);
     expect(validateHypothesis(h({ p10: 0.95, p50: 1.3, p90: 1.05, min: 0.9, max: 1.2 }))[0]).toMatch(/PERT|minimum/);
     expect(validateHypothesis(h({ code: 'H06', depart: -1, derive_annuelle: 0, volatilite_mensuelle: 0 }))).toHaveLength(2);
+  });
+  test('R-HY-03 : k fini, strictement positif et borné ; bornes élargies valides', () => {
+    for (const k of [0, -1, Number.NaN, Number.POSITIVE_INFINITY, 3.5]) {
+      expect(validateHypothesis(h({ p10: 0.95, p50: 1, p90: 1.05, k })).join(' ')).toMatch(/k doit être/);
+      expect(validateHypothesis(h({ code: 'H07', p10: 0.98, p50: null, p90: 1.025, k })).join(' ')).toMatch(/k doit être/);
+      expect(validateHypothesis(h({ code: 'H06', depart: 5100, derive_annuelle: 0.04, volatilite_mensuelle: 0.018, k })).join(' ')).toMatch(/k doit être/);
+    }
+    expect(validateHypothesis(h({ p10: 0.95, p50: 1, p90: 1.05, k: 1.51 }))).toEqual([]);
+    expect(validateHypothesis(h({ p10: 0.95, p50: 1, p90: 1.05 }))).toEqual([]);
+    // P10 positif qui deviendrait négatif après élargissement
+    expect(validateHypothesis(h({ p10: 0.4, p50: 1, p90: 1.2, k: 2 })).join(' ')).toMatch(/P10 élargi/);
+    // volatilité du change élargie au-delà du plausible
+    expect(validateHypothesis(h({ code: 'H06', depart: 5100, derive_annuelle: 0.04, volatilite_mensuelle: 0.1, k: 3 })).join(' ')).toMatch(/volatilité mensuelle élargie/);
   });
 });

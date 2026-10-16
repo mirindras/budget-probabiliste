@@ -22,15 +22,15 @@
 {:else}
   <div class="grid">
     <section>
-      <h2>{top ? `Le bloc ${top.libelle.toLowerCase()} porte ${pct(top.part)} du risque` : 'Origine du risque'}</h2>
-      <p class="small muted">Contribution à la variance : carré de la corrélation de rang entre chaque hypothèse et l'EBITDA, normalisé à 100 %. Avec des hypothèses corrélées, les contributions se recouvrent : lisez les blocs. Ces parts sont un résultat du modèle, qui découle des fourchettes et corrélations du registre, pas une mesure du risque réel de l'entreprise.</p>
+      <h2>{top ? `Le bloc ${top.libelle.toLowerCase()} concentre ${pct(top.part)} des contributions relatives au risque` : 'Origine du risque'}</h2>
+      <p class="small muted">Contribution relative : carré de la corrélation de rang entre chaque hypothèse et l'EBITDA simulé, ramené à 100 %. C'est un classement descriptif, pas une décomposition de la variance : les hypothèses étant corrélées, leurs effets se recouvrent et ne s'additionnent pas. C'est aussi un résultat du modèle, qui découle des fourchettes et corrélations saisies au registre, pas une mesure du risque réel de l'entreprise. Pour mesurer ce qu'une action peut changer, lisez l'effet isolé.</p>
       <div class="blocks">
         {#each [...r.contributions.blocks].sort((a, b) => b.part - a.part) as b (b.code)}
           <div class="block" style="flex: {Math.max(b.part, 0.04)}"><b>{pct(b.part)}</b><span class="small">{b.libelle}</span></div>
         {/each}
       </div>
       <table class="small">
-        <thead><tr><th>Hypothèse</th><th class="num">Corrélation de rang</th><th>Part du risque</th></tr></thead>
+        <thead><tr><th>Hypothèse</th><th class="num">Corrélation de rang</th><th>Contribution relative</th></tr></thead>
         <tbody>
           {#each r.contributions.items as c (c.code)}
             <tr>

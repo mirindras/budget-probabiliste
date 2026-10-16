@@ -54,6 +54,33 @@ describe('modèle BUDGET_BASE (R-IN-08)', () => {
     expect(errs[1]).toMatch(/^VENTES\|9\|.*prix nul/);
     expect(errs[2]).toMatch(/^CHARGES\|3\|.*loyers.*R-IN-03/);
   });
+  test('grain : un fichier incomplet est rejeté même si son EBITDA se réconcilie', () => {
+    const wb = roundTrip(budgetTemplate());
+    const rows = XLSX.utils.sheet_to_json<Record<string, number | string>>(wb.Sheets.VENTES);
+    // La ligne R (mars, Boissons, 1re combinaison) est fusionnée dans Q (mars, Boissons, 2e combinaison) : mêmes montants, une combinaison en moins.
+    const iR = rows.findIndex((r) => r.mois === 3 && r.bu === 'Boissons');
+    const R = rows[iR];
+    const Q = rows.find((r, i) => i !== iR && r.mois === 3 && r.bu === 'Boissons')!;
+    const ca = +Q.volume_cartons * +Q.prix_net_mga + +R.volume_cartons * +R.prix_net_mga;
+    const cm = +Q.volume_cartons * +Q.cout_unitaire_mga + +R.volume_cartons * +R.cout_unitaire_mga;
+    Object.assign(Q, { volume_cartons: 1, prix_net_mga: ca, cout_unitaire_mga: cm });
+    rows.splice(iR, 1);
+    wb.Sheets.VENTES = XLSX.utils.json_to_sheet(rows);
+    const errs = errorsOf(() => importBudget(wb));
+    expect(errs).toHaveLength(1);
+    expect(errs[0]).toMatch(new RegExp(`^VENTES\\|null\\|Boissons, ${R.canal}, ${R.famille} : mois manquant\\(s\\) 3 `));
+    expect(errs.join('\n')).not.toMatch(/réconciliation/);
+  });
+  test('grain : un doublon mois × BU × canal × famille est rejeté et localisé', () => {
+    const wb = roundTrip(budgetTemplate());
+    const rows = XLSX.utils.sheet_to_json<Record<string, number | string>>(wb.Sheets.VENTES);
+    const a = rows.findIndex((r) => r.mois === 5 && r.bu === 'Epicerie');
+    const b = rows.findIndex((r, i) => i > a && r.mois === 5 && r.bu === 'Epicerie' && r.canal === rows[a].canal);
+    rows[b].famille = rows[a].famille; // mêmes montants, clé en double
+    wb.Sheets.VENTES = XLSX.utils.json_to_sheet(rows);
+    const errs = errorsOf(() => importBudget(wb));
+    expect(errs[0]).toMatch(new RegExp(`^VENTES\\|${b + 2}\\|doublon de la ligne ${a + 2} : mois 5, Epicerie`));
+  });
   test('R-IN-01 et R-IN-04 : écart de réconciliation et mois manquant', () => {
     const wb = roundTrip(budgetTemplate());
     const p = wb.Sheets.PARAMETRES;
@@ -62,7 +89,7 @@ describe('modèle BUDGET_BASE (R-IN-08)', () => {
     const wb2 = roundTrip(budgetTemplate());
     const rows = XLSX.utils.sheet_to_json<Record<string, unknown>>(wb2.Sheets.VENTES).filter((r) => !(r.mois === 3 && r.bu === 'Hygiene'));
     wb2.Sheets.VENTES = XLSX.utils.json_to_sheet(rows);
-    expect(errorsOf(() => importBudget(wb2)).join('\n')).toMatch(/Hygiene : mois manquant\(s\) 3/);
+    expect(errorsOf(() => importBudget(wb2)).join('\n')).toMatch(/Hygiene, .+ : mois manquant\(s\) 3/);
     expect(errorsOf(() => importBudget(XLSX.utils.book_new()))).toHaveLength(3);
   });
   test('import CSV : une feuille par fichier', () => {

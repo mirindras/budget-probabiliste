@@ -69,11 +69,14 @@ export interface Contribution {
   code: DriverCode;
   /** Corrélation de rang avec l'EBITDA. */
   rho: number;
-  /** Part de variance, normalisée à 100 %. */
+  /** Contribution relative : rho² ramené à 100 %. Classement descriptif, pas une décomposition de la variance. */
   part: number;
 }
 
-/** Contribution à la variance : carré de la corrélation de rang, normalisé (9.2). */
+/**
+ * Contribution relative (9.2) : carré de la corrélation de rang, ramené à 100 %.
+ * Avec des hypothèses corrélées, ce n'est pas une décomposition de la variance : les parts se recouvrent.
+ */
 export function contributions(d: Draws, annual: Float64Array): { items: Contribution[]; blocks: { code: string; libelle: string; part: number }[] } {
   const re = ranks(annual);
   const raw = DRIVER_CODES.map((code) => {

@@ -4,7 +4,8 @@ import type { BacktestResult } from '../engine/backtest.ts';
 import type { RunError, RunOutput } from '../engine/simulate.ts';
 import type { Actuals, BudgetGrid, CaseCode, Scenario } from '../engine/types.ts';
 import type { JournalEntry } from '../io/excel.ts';
-import { scenarioFromHash } from '../io/share.ts';
+import { readScenarioFromHash } from '../io/share.ts';
+import { isScenario } from '../engine/schema.ts';
 import { clearDraft, loadDraft, saveDraft } from '../io/storage.ts';
 import { EngineClient } from './engine-client.ts';
 
@@ -72,8 +73,13 @@ class AppState {
   }
 
   async init() {
-    const fromLink = scenarioFromHash(location.hash);
-    if (fromLink) {
+    const link = readScenarioFromHash(location.hash);
+    const fromLink = link?.ok ? link.scenario : null;
+    if (link && !link.ok) {
+      const more = link.errors.length > 3 ? ` (et ${link.errors.length - 3} autres)` : '';
+      this.notice = `Lien de partage invalide, scénario ALFA ouvert à la place : ${link.errors.slice(0, 3).join(' ; ')}${more}.`;
+      history.replaceState(null, '', location.pathname + location.search);
+    } else if (fromLink) {
       this.scenario = fromLink;
       this.budget = alfaBudget();
       if (fromLink.toolVersion !== TOOL_VERSION) {
@@ -84,7 +90,7 @@ class AppState {
       history.replaceState(null, '', location.pathname + location.search);
     } else {
       const draft = await loadDraft<Draft>(DRAFT_KEY);
-      if (draft?.scenario?.schemaVersion === 1 && draft.budget) {
+      if (draft && isScenario(draft.scenario) && draft.budget) {
         this.scenario = draft.scenario;
         this.budget = draft.budget;
         this.notice = 'Brouillon restauré depuis votre dernière visite sur ce poste.';

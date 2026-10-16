@@ -73,6 +73,13 @@ test('TC17 : le lien de partage rejoue le même scénario dans un autre navigate
   await other.close();
 });
 
+test('un lien de partage altéré est refusé avec un message, et ALFA est calculé', async ({ page }) => {
+  await page.goto('./#s=N4IgdghgtgpiBc');
+  await expect(page.getByRole('status').first()).toContainText('Lien de partage invalide');
+  await expect(page.getByTestId('probabilite').locator('.value')).toHaveText(/\d+\s%/);
+  expect(page.url()).not.toContain('#s=');
+});
+
 test('TC18 : un modèle à 3 erreurs donne 3 messages localisés et aucun calcul', async ({ page }) => {
   await ready(page);
   const before = await page.getByTestId('run-ref').textContent();

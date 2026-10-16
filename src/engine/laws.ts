@@ -31,7 +31,7 @@ export function chooseLaw(h: Hypothesis): LawKind {
   return 'split-normale';
 }
 
-/** Élargissement des bornes autour du P50 (R-HY-03). */
+/** Élargissement des bornes autour du P50 (R-HY-03), lois normale et split-normale. */
 export function widen(p10: number, p50: number, p90: number, k: number): [number, number] {
   return [p50 - k * (p50 - p10), p50 + k * (p90 - p50)];
 }
@@ -59,10 +59,11 @@ export function makeLaw(h: Hypothesis, applyK = true): Law {
       };
     }
     case 'lognormale': {
-      const med0 = Math.sqrt(h.p10! * h.p90!);
-      const [p10, p90] = widen(h.p10!, med0, h.p90!, k);
-      const med = Math.sqrt(p10 * p90);
-      const s = Math.log(p90 / p10) / (2 * Z90);
+      // L'élargissement se fait en logarithme : la médiane saisie est conservée, σ est multiplié par k (R-HY-03).
+      const med = Math.sqrt(h.p10! * h.p90!);
+      const s = (k * Math.log(h.p90! / h.p10!)) / (2 * Z90);
+      const p10 = med * Math.exp(-s * Z90);
+      const p90 = med * Math.exp(s * Z90);
       const lm = Math.log(med);
       return {
         kind, p10, p50: med, p90,
@@ -72,6 +73,7 @@ export function makeLaw(h: Hypothesis, applyK = true): Law {
       };
     }
     case 'pert': {
+      // k ne s'applique pas : le minimum et le maximum sont des bornes physiques, qu'aucun élargissement ne doit franchir.
       const a = h.min!;
       const b = h.max!;
       const m = h.p50!;
@@ -90,15 +92,25 @@ export function makeLaw(h: Hypothesis, applyK = true): Law {
   }
 }
 
+/** Bornes de k : le backtest le borne à [1 ; 2], la saisie libre à ]0 ; K_MAX]. */
+export const K_MAX = 3;
+/** Volatilité mensuelle maximale du change après élargissement. */
+const VOL_MAX = 0.25;
+
 /** Contrôle R-HY-01 : P10 < P50 < P90 strictement (ou bornes PERT cohérentes). */
 export function validateHypothesis(h: Hypothesis): string[] {
   const errors: string[] = [];
   if (!h.proprietaire?.trim()) errors.push(`${h.code} : propriétaire manquant (principe 3)`);
   if (!h.justification?.trim()) errors.push(`${h.code} : justification manquante (principe 3)`);
+  if (h.k !== undefined && !(Number.isFinite(h.k) && h.k > 0 && h.k <= K_MAX)) {
+    errors.push(`${h.code} : k doit être un nombre strictement positif, au plus ${K_MAX} (R-HY-03)`);
+  }
+  const k = h.k ?? 1;
   const kind = chooseLaw(h);
   if (kind === 'marche-aleatoire') {
     if (!(h.depart! > 0)) errors.push(`${h.code} : cours de départ non positif`);
     if (!(h.volatilite_mensuelle! > 0)) errors.push(`${h.code} : volatilité non positive`);
+    else if (!(h.volatilite_mensuelle! * k <= VOL_MAX)) errors.push(`${h.code} : volatilité mensuelle élargie par k supérieure à ${VOL_MAX * 100} %`);
     return errors;
   }
   if (kind === 'pert') {
@@ -109,6 +121,13 @@ export function validateHypothesis(h: Hypothesis): string[] {
     if (!(h.p10! > 0 && h.p10! < h.p90!)) errors.push(`${h.code} : 0 < P10 < P90 non respecté (R-HY-01)`);
     return errors;
   }
-  if (!(h.p10! < h.p50! && h.p50! < h.p90!)) errors.push(`${h.code} : P10 < P50 < P90 non respecté (R-HY-01)`);
+  if (!(h.p10! < h.p50! && h.p50! < h.p90!)) {
+    errors.push(`${h.code} : P10 < P50 < P90 non respecté (R-HY-01)`);
+    return errors;
+  }
+  // Une grandeur saisie positive doit le rester après élargissement : sinon le facteur tiré peut devenir nul ou négatif.
+  if (h.p10! > 0 && Number.isFinite(k) && k > 0 && !(widen(h.p10!, h.p50!, h.p90!, k)[0] > 0)) {
+    errors.push(`${h.code} : P10 élargi par k = ${k} négatif ou nul ; réduire k ou passer en loi PERT (R-HY-03)`);
+  }
   return errors;
 }

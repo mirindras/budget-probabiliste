@@ -11,6 +11,7 @@ import {
   type BuStats, type Contribution, type Effect, type EventEffect, type FanPoint, type ProfileRow, type QuarterStats, type Stats,
 } from './risk.ts';
 import { drawAll, samplingContext, type Draws } from './sampling.ts';
+import { checkScenarioShape } from './schema.ts';
 import { percentileSorted, sorted } from './stats.ts';
 import type { Actuals, BudgetGrid, CaseCode, LawKind, Scenario } from './types.ts';
 
@@ -85,6 +86,9 @@ export interface RunError {
 }
 
 export function validateScenario(s: Scenario): string[] {
+  // Structure d'abord : les règles métier ci-dessous supposent les champs présents et typés.
+  const shape = checkScenarioShape(s);
+  if (shape.length) return shape;
   const errors: string[] = [];
   for (const h of s.registre.hypotheses) errors.push(...validateHypothesis(h));
   for (const e of s.registre.evenements) {

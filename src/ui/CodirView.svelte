@@ -132,9 +132,9 @@
         {#if r.partial}
           <p class="muted small">Analyse en cours…</p>
         {:else}
-          <div class="blocks" aria-label="Part du risque par famille">
+          <div class="blocks" aria-label="Contribution relative par famille">
             {#each blocks as b (b.code)}
-              <div class="block {b.code}" style="flex: {Math.max(b.part, 0.06)}" title="{b.libelle} : {pct(b.part)} de la variance de l'EBITDA simulé">
+              <div class="block {b.code}" style="flex: {Math.max(b.part, 0.06)}" title="{b.libelle} : {pct(b.part)} des contributions relatives">
                 <b>{pct(b.part)}</b><span>{b.libelle}</span>
               </div>
             {/each}
@@ -142,12 +142,12 @@
           <ol class="drivers">
             {#each drivers as d (d.code)}
               <li>
-                <div class="dh"><b>{labels[d.code]}</b><span class="share">{pct(d.part)} du risque</span></div>
+                <div class="dh"><b>{labels[d.code]}</b><span class="share">{pct(d.part)} des contributions</span></div>
                 <p class="small muted">{why(d.code)}</p>
               </li>
             {/each}
           </ol>
-          <p class="small muted">Part de la variance de l'EBITDA simulé (corrélation de rang au carré, normalisée à 100 %). C'est un résultat du modèle, qui découle des fourchettes et corrélations saisies au registre, pas une mesure du risque réel de l'entreprise{#if app.isAlfa} ; ici, données synthétiques ALFA{/if}.</p>
+          <p class="small muted">Contribution relative : carré de la corrélation de rang entre chaque hypothèse et l'EBITDA simulé, ramené à 100 %. C'est un classement descriptif, pas une décomposition de la variance : les hypothèses étant corrélées, leurs effets se recouvrent et ne s'additionnent pas. C'est aussi un résultat du modèle, qui découle des fourchettes et corrélations saisies au registre, pas une mesure du risque réel de l'entreprise{#if app.isAlfa} ; ici, données synthétiques ALFA{/if}.</p>
         {/if}
       </section>
     </div>

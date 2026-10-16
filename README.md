@@ -12,8 +12,8 @@ FP&A probabiliste : budget, atterrissage, risque, backtest et arbitrages, sur un
 ![Données](https://img.shields.io/badge/données-synthétiques-5E6B7E)
 ![Langue](https://img.shields.io/badge/langue-français-5E6B7E)
 
-![Vitest](https://img.shields.io/badge/Vitest-69_tests-2B6E4A)
-![Playwright](https://img.shields.io/badge/Playwright-15_parcours-2B6E4A)
+![Vitest](https://img.shields.io/badge/Vitest-95_tests-2B6E4A)
+![Playwright](https://img.shields.io/badge/Playwright-16_parcours-2B6E4A)
 ![Couverture](https://img.shields.io/badge/couverture_moteur-98_%25-2B6E4A)
 ![TypeScript](https://img.shields.io/badge/TypeScript-5-1769AA?logo=typescript&logoColor=white)
 ![Svelte](https://img.shields.io/badge/Svelte-5-B87333?logo=svelte&logoColor=white)
@@ -39,7 +39,7 @@ Résultat : le CODIR vote un budget sans savoir quelle est sa marge d'erreur, ni
 | --- | --- |
 | Quelle chance avons-nous d'atteindre l'EBITDA budgété ? | **30 %**, soit environ 1 chance sur 3 ; le résultat médian est de 8,6 GAr, 0,8 GAr sous le budget |
 | Combien perd-on dans une année défavorable, à 1 chance sur 10 ? | l'EBITDA tombe à **6,7 GAr**, soit 1,9 GAr de moins que le résultat médian |
-| D'où vient le risque ? | à **68 %** de l'environnement macroéconomique : le taux de change et ce qu'il entraîne (prix locaux, carburant, frais généraux). Part de la variance de l'EBITDA simulé, sur les données synthétiques ALFA : un résultat du modèle, pas une observation sur une entreprise réelle |
+| D'où vient le risque ? | d'abord de l'environnement macroéconomique : le taux de change et ce qu'il entraîne (prix locaux, carburant, frais généraux) concentrent **68 %** des contributions relatives. Classement par corrélations de rang sur les données synthétiques ALFA : un résultat du modèle, ni une décomposition causale ni une observation sur une entreprise réelle |
 | Quelles actions améliorent les chances, et à quel coût ? | une hausse tarifaire ciblée et des économies de frais généraux portent la probabilité à **40 %**, pour 0,05 GAr de coût direct |
 
 ## La décision qu'il éclaire
@@ -66,7 +66,7 @@ Chaque terme a un seul sens, dans l'outil comme dans ce document. Les chiffres v
 | Objectif à 80 % de chances | niveau atteint ou dépassé dans 8 années simulées sur 10 | P20 |
 | Risque | perte d'une année défavorable par rapport au résultat médian | EaR 90 = P50 − P10 |
 | 10 % pires cas | moyenne de l'EBITDA sur les 10 % d'années les plus basses | CVaR 10 |
-| Part du risque | part de la variance de l'EBITDA simulé portée par une hypothèse ou un bloc (corrélation de rang au carré, normalisée à 100 %) ; un résultat du modèle, pas une mesure du risque réel | |
+| Contribution relative | carré de la corrélation de rang entre une hypothèse et l'EBITDA simulé, ramené à 100 % ; un classement descriptif, pas une décomposition de la variance, puisque les hypothèses corrélées se recouvrent ; un résultat du modèle, pas une mesure du risque réel | ρ² normalisé |
 
 ## Comment ça fonctionne
 
@@ -97,7 +97,7 @@ Chaque action est testée sur exactement les mêmes 10 000 années que le budget
 
 - la réponse en une phrase et une jauge (« Le budget a 30 % de chances d'être atteint ») ;
 - quatre chiffres clés en GAr : résultat médian, année défavorable, année favorable, objectif à 80 % de chances ;
-- le pourquoi : la part du risque par famille, et les hypothèses qui pèsent le plus, expliquées en clair ;
+- le pourquoi : la contribution relative de chaque famille au risque, et les hypothèses qui pèsent le plus, expliquées en clair ;
 - les décisions sur la table : chaque action avec son effet sur les chances, sur l'année défavorable et son coût, puis les options A et B à arbitrer ;
 - les « et si » : ce que deviendraient les chances après une dépréciation brutale de l'ariary, la perte de deux grands comptes ou un choc carburant.
 
@@ -110,7 +110,7 @@ Chaque action est testée sur exactement les mêmes 10 000 années que le budget
 | Origine du risque | Atterrissage en cours d'année |
 | --- | --- |
 | ![Origine du risque : contributions, effet isolé, événements](docs/images/origine-du-risque.png) | ![Trajectoire mensuelle avec 6 mois clos au réel](docs/images/trajectoire.png) |
-| Part du risque par hypothèse, effet d'une action ciblée, écart entre les années avec et sans chaque événement. | Les mois clos sont figés au réel ; la probabilité est recalculée à chaque clôture. |
+| Contribution relative de chaque hypothèse, effet d'une action ciblée, écart entre les années avec et sans chaque événement. | Les mois clos sont figés au réel ; la probabilité est recalculée à chaque clôture. |
 
 **Pour restituer et partager** : une note CODIR d'une page A4 à imprimer, un lien qui rejoue exactement le même scénario, des exports Excel prêts pour Power BI. Pour essayer avec ses propres chiffres : télécharger le modèle Excel, le remplir, le déposer dans la page ; rien ne quitte le poste.
 
@@ -135,7 +135,7 @@ Pour les lecteurs Data, Software ou Quant, voici ce qui garantit des chiffres ju
 - **Dépendances** : corrélations de rang (Spearman) converties pour une copule gaussienne, décomposition de Cholesky, correction de Higham si la matrice saisie est incohérente.
 - **Dynamiques mensuelles** : marche aléatoire du change conditionnée au choc annuel, bruit AR(1) des volumes recentré sur la saisonnalité, événements Bernoulli datés.
 - **Aléa commun** : leviers et stress tests réutilisent les tirages de la base ; un levier sans effet donne un écart exactement nul.
-- **Attribution du risque** : contribution à la variance par corrélation de rang, effet isolé contre effet total, profil moyen des années P5 à P15.
+- **Attribution du risque** : contribution relative par corrélation de rang (classement, pas décomposition de la variance), effet isolé contre effet total, profil moyen des années P5 à P15.
 - **Calibration** : backtest par hypothèse et par trimestre (couverture, PIT, score de Brier, CRPS), coefficient d'élargissement k = Φ⁻¹(0,9) / Φ⁻¹((1 + c) / 2).
 - **Reproductibilité** : générateur à graine xoshiro128** en arithmétique entière, identique bit à bit pour une même graine ; chaque résultat porte sa référence de run.
 - **Vérité connue** : un jeu synthétique généré par un processus dont on connaît les vrais paramètres permet de vérifier que le moteur est calibré.
@@ -299,6 +299,7 @@ Le modèle mesure l'incertitude qu'on lui décrit, rien de plus : les risques ab
 
 ### V2
 
+- [ ] Attribution du risque par effets de Shapley, adaptée aux hypothèses corrélées, en complément du classement par corrélations de rang
 - [ ] Corrélations de crise : un second régime où les hypothèses décrochent ensemble
 - [ ] Queues épaisses : chocs extrêmes plus fréquents que ne le prévoit le modèle actuel (copule de Student en option)
 - [ ] Plusieurs entités et consolidation, avec le change propre à chaque entité

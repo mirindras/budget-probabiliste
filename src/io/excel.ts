@@ -137,7 +137,9 @@ export function importBudget(wb: XLSX.WorkBook): BudgetGrid {
 
   const bus: string[] = [];
   const cells = new Map<string, { ca: number; imp: number; loc: number }>();
-  const seen = new Map<string, Set<number>>();
+  // Grain mois × BU × canal × famille : chaque combinaison BU × canal × famille du fichier doit figurer une fois et une seule chaque mois.
+  const grain = new Map<string, number>();
+  const combos = new Map<string, { bu: string; canal: string; famille: string; mois: Set<number> }>();
   ventes!.forEach((r, k) => {
     const ligne = k + 2;
     const mois = num(r.mois);
@@ -158,6 +160,18 @@ export function importBudget(wb: XLSX.WorkBook): BudgetGrid {
       errors.push({ feuille: 'VENTES', ligne, message: errs.join(' ; ') });
       return;
     }
+    const canal = String(r.canal).trim();
+    const famille = String(r.famille).trim();
+    const cle = `${mois}|${bu}|${canal}|${famille}`;
+    const premiere = grain.get(cle);
+    if (premiere !== undefined) {
+      errors.push({ feuille: 'VENTES', ligne, message: `doublon de la ligne ${premiere} : mois ${mois}, ${bu}, ${canal}, ${famille} (clé unique mois × BU × canal × famille)` });
+      return;
+    }
+    grain.set(cle, ligne);
+    const combo = `${bu}|${canal}|${famille}`;
+    if (!combos.has(combo)) combos.set(combo, { bu, canal, famille, mois: new Set() });
+    combos.get(combo)!.mois.add(mois);
     if (!bus.includes(bu)) bus.push(bu);
     const key = `${bu}|${mois}`;
     const c = cells.get(key) ?? { ca: 0, imp: 0, loc: 0 };
@@ -165,17 +179,15 @@ export function importBudget(wb: XLSX.WorkBook): BudgetGrid {
     c.imp += (vol * cu * imp) / G;
     c.loc += (vol * cu * (1 - imp)) / G;
     cells.set(key, c);
-    if (!seen.has(bu)) seen.set(bu, new Set());
-    seen.get(bu)!.add(mois);
   });
   if (bus.length !== 3 && !errors.some((e) => e.feuille === 'VENTES')) {
     errors.push({ feuille: 'VENTES', ligne: null, message: `3 BU attendues (hypothèses H01 à H03), ${bus.length} trouvées` });
   }
   // Continuité (R-IN-04) vérifiée seulement sans erreur de ligne : une ligne rejetée n'est pas signalée deux fois.
   const ventesLineErrors = errors.some((e) => e.feuille === 'VENTES' && e.ligne !== null);
-  for (const bu of ventesLineErrors ? [] : bus) {
-    const missing = Array.from({ length: 12 }, (_, i) => i + 1).filter((m) => !seen.get(bu)!.has(m));
-    if (missing.length) errors.push({ feuille: 'VENTES', ligne: null, message: `${bu} : mois manquant(s) ${missing.join(', ')} (R-IN-04)` });
+  for (const c of ventesLineErrors ? [] : combos.values()) {
+    const missing = Array.from({ length: 12 }, (_, i) => i + 1).filter((m) => !c.mois.has(m));
+    if (missing.length) errors.push({ feuille: 'VENTES', ligne: null, message: `${c.bu}, ${c.canal}, ${c.famille} : mois manquant(s) ${missing.join(', ')} (R-IN-04)` });
   }
   const ch: Record<string, number[]> = Object.fromEntries(POSTES.map((x) => [x, new Array(12).fill(NaN)]));
   charges!.forEach((r, k) => {
