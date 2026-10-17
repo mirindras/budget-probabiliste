@@ -12,9 +12,9 @@ FP&A probabiliste : budget, atterrissage, risque, backtest et arbitrages, sur un
 ![Données](https://img.shields.io/badge/données-synthétiques-5E6B7E)
 ![Langue](https://img.shields.io/badge/langue-français-5E6B7E)
 
-![Vitest](https://img.shields.io/badge/Vitest-95_tests-2B6E4A)
-![Playwright](https://img.shields.io/badge/Playwright-16_parcours-2B6E4A)
-![Couverture](https://img.shields.io/badge/couverture_moteur-98_%25-2B6E4A)
+![Vitest](https://img.shields.io/badge/Vitest-102_tests-2B6E4A)
+![Playwright](https://img.shields.io/badge/Playwright-17_parcours-2B6E4A)
+![Couverture](https://img.shields.io/badge/couverture-96_%25-2B6E4A)
 ![TypeScript](https://img.shields.io/badge/TypeScript-5-1769AA?logo=typescript&logoColor=white)
 ![Svelte](https://img.shields.io/badge/Svelte-5-B87333?logo=svelte&logoColor=white)
 ![Vite](https://img.shields.io/badge/Vite-7-5E6B7E?logo=vite&logoColor=white)
@@ -224,9 +224,10 @@ Douze contrôles s'exécutent à chaque run (réconciliation avec le budget, coh
 | TC14 calibration sur vérité connue, backtest | `tests/engine/backtest.test.ts` | automatisé |
 | TC17 lien de partage (moteur), TC18 import à 3 erreurs (moteur) | `tests/io/excel.test.ts` | automatisé |
 | TC15 performance, TC17 lien ouvert dans un autre navigateur, TC18 import dans l'écran, TC19 confidentialité, note sur une page, mobile, synthèse CODIR | `tests/e2e/*.spec.ts` | automatisé |
+| Entrées externes : limites des fichiers et des liens, structure des scénarios | `tests/io/limits.test.ts`, `tests/engine/schema.test.ts`, `tests/e2e/outil.spec.ts` | automatisé |
 | TC20 prise en main par 3 testeurs non techniques | test utilisateur | à mener |
 
-Couverture du moteur : 98 % des instructions (exigence : 90 %). Chaque push repasse les types, les deux recettes et la construction ; `main` n'est publié que si tout est vert.
+Couverture du moteur et des entrées-sorties : 96 % des instructions, 99 % des lignes (exigence : 90 %). Chaque push vérifie la dépendance SheetJS (source, empreinte, version) puis repasse les types, les deux recettes et la construction ; `main` n'est publié que si tout est vert.
 
 ## Démarrage pour un développeur
 
@@ -266,7 +267,7 @@ Décisions prises là où la SFD laissait une marge ; chacune est tracée dans l
 - **Statut du registre.** Toute modification d'un registre gelé crée une nouvelle version en brouillon (R-HY-04).
 - **Palette.** Bleu pour l'information, cuivre pour ce qu'on simule, rouge pour le budget et le risque, vert réservé aux petits écarts favorables ; textes au niveau AA des WCAG en mode clair et sombre, distribution lisible en niveaux de gris. Comparaison des variantes étudiées : [docs/design/comparatif-palettes.png](docs/design/comparatif-palettes.png).
 - **Graphiques.** SVG écrit à la main, sans D3 : les échelles nécessaires sont linéaires.
-- **Excel.** SheetJS est installé depuis npm (version 0.18.5). Cette version porte deux alertes connues (pollution de prototype et ReDoS à la lecture d'un fichier piégé, `npm audit`) ; l'impact reste borné au navigateur de l'utilisateur, qui ne lit que les fichiers qu'il dépose lui-même. Pour les lever, remplacer la dépendance par `https://cdn.sheetjs.com/xlsx-0.20.3/xlsx-0.20.3.tgz` dans `package.json`.
+- **Excel.** SheetJS 0.20.3, installé depuis son CDN officiel avec empreinte SHA-512, corrige les deux failles de la 0.18.5 publiée sur npm. Fichiers et liens sont bornés avant lecture (taille, contenu décompressé, lignes, longueur) : voir [SECURITY.md](SECURITY.md).
 - **Hors ligne.** Un service worker garde en cache les fichiers de l'outil : il fonctionne sans connexion une fois chargé.
 
 ## Jeu synthétique

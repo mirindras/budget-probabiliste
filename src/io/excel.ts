@@ -6,6 +6,7 @@
 import * as XLSX from 'xlsx';
 import { ALFA_COMPACT, alfaLevers, alfaStress, TOOL_VERSION } from '../engine/alfa.ts';
 import { reconciliation } from '../engine/controls.ts';
+import { checkCsvText, checkSheetRange, checkXlsxBytes, LIMITS } from './limits.ts';
 import type { RunOutput } from '../engine/simulate.ts';
 import type { Draws } from '../engine/sampling.ts';
 import type { PLResult } from '../engine/pl.ts';
@@ -426,15 +427,42 @@ export function workbookKind(wb: XLSX.WorkBook): 'budget' | 'registre' | 'scenar
   return 'inconnu';
 }
 
-export function readWorkbook(data: ArrayBuffer | Uint8Array): XLSX.WorkBook {
-  return XLSX.read(data, { type: 'array' });
+/** Dimensions des feuilles lues : nombre de feuilles, lignes et colonnes bornés (limits.ts). */
+function checkSheets(wb: XLSX.WorkBook): void {
+  const errors: ImportError[] = [];
+  if (wb.SheetNames.length > LIMITS.sheets) errors.push({ feuille: 'classeur', ligne: null, message: `${wb.SheetNames.length} feuilles, ${LIMITS.sheets} au plus` });
+  for (const n of wb.SheetNames.slice(0, LIMITS.sheets)) {
+    const ws = wb.Sheets[n];
+    errors.push(...checkSheetRange(n, (ws?.['!fullref'] as string | undefined) ?? ws?.['!ref'], XLSX.utils.decode_range));
+  }
+  if (errors.length) throw new ImportFailure(errors);
+}
+
+/** Lecture d'un classeur, bornée avant et pendant la lecture : taille, contenu décompressé, lignes. */
+export function readWorkbook(data: ArrayBuffer | Uint8Array, name?: string): XLSX.WorkBook {
+  const bytes = data instanceof Uint8Array ? data : new Uint8Array(data);
+  const errors = checkXlsxBytes(bytes, name);
+  if (errors.length) throw new ImportFailure(errors);
+  const wb = XLSX.read(bytes, { type: 'array', sheetRows: LIMITS.rows + 1 });
+  checkSheets(wb);
+  return wb;
+}
+
+/** Feuille lue depuis un CSV, après contrôle de taille et de nombre de lignes. */
+export function readCsvSheet(text: string, name = 'CSV'): XLSX.WorkSheet {
+  const errors = checkCsvText(text, name);
+  if (errors.length) throw new ImportFailure(errors);
+  const nl = text.indexOf('\n');
+  const firstLine = nl < 0 ? text : text.slice(0, nl);
+  const wb = XLSX.read(text, { type: 'string', FS: firstLine.includes(';') ? ';' : ',', sheetRows: LIMITS.rows + 1 });
+  checkSheets(wb);
+  return wb.Sheets[wb.SheetNames[0]];
 }
 
 /** Lecture d'un CSV : une feuille nommée d'après le fichier (VENTES.csv, CHARGES.csv…). */
 export function readCsv(text: string, sheetName: string): XLSX.WorkBook {
-  const wb = XLSX.read(text, { type: 'string', FS: text.includes(';') ? ';' : ',' });
   const out = XLSX.utils.book_new();
-  XLSX.utils.book_append_sheet(out, wb.Sheets[wb.SheetNames[0]], sheetName.toUpperCase());
+  XLSX.utils.book_append_sheet(out, readCsvSheet(text, sheetName), sheetName.toUpperCase());
   return out;
 }
 

@@ -4,6 +4,11 @@ import { checkScenarioShape } from '../engine/schema.ts';
 import type { Scenario } from '../engine/types.ts';
 
 export const HASH_KEY = 's';
+/**
+ * Bornes du lien, contrôlées avant décompression puis avant analyse JSON.
+ * Un lien ALFA fait 5 124 caractères pour 7 573 caractères de JSON : la marge est large.
+ */
+export const LINK_LIMITS = { encoded: 12_000, json: 100_000 } as const;
 
 export function encodeScenario(s: Scenario): string {
   return compressToEncodedURIComponent(JSON.stringify(s));
@@ -13,10 +18,13 @@ export type Decoded = { ok: true; scenario: Scenario } | { ok: false; errors: st
 
 /** Décode et valide un lien : structure complète contrôlée avant tout calcul. */
 export function readScenario(code: string): Decoded {
+  if (code.length > LINK_LIMITS.encoded) return { ok: false, errors: [`Lien trop long : ${code.length} caractères, ${LINK_LIMITS.encoded} au plus`] };
+  if (!/^[A-Za-z0-9+\-$ ]*$/.test(code)) return { ok: false, errors: ['Lien altéré : caractères inattendus'] };
   let parsed: unknown;
   try {
     const json = decompressFromEncodedURIComponent(code);
     if (!json) return { ok: false, errors: ['Lien tronqué ou illisible'] };
+    if (json.length > LINK_LIMITS.json) return { ok: false, errors: ['Contenu du lien trop volumineux'] };
     parsed = JSON.parse(json);
   } catch {
     return { ok: false, errors: ['Lien tronqué ou illisible'] };

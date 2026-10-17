@@ -73,6 +73,21 @@ test('TC17 : le lien de partage rejoue le même scénario dans un autre navigate
   await other.close();
 });
 
+test('un fichier hors limites est refusé avant lecture, sans calcul', async ({ page }) => {
+  await ready(page);
+  const before = await page.getByTestId('run-ref').textContent();
+  await page.getByTestId('file-input').setInputFiles([
+    { name: 'ancien.xls', mimeType: 'application/vnd.ms-excel', buffer: Buffer.from('xx') },
+    { name: 'BUDGET_BASE.xlsx', mimeType: 'application/octet-stream', buffer: Buffer.from('pas un classeur') },
+  ]);
+  const box = page.getByTestId('import-errors');
+  await expect(box).toContainText('Fichier refusé avant lecture');
+  await expect(box).toContainText('ancien.xls : format non accepté');
+  await page.getByTestId('file-input').setInputFiles({ name: 'BUDGET_BASE.xlsx', mimeType: 'application/octet-stream', buffer: Buffer.from('pas un classeur') });
+  await expect(box).toContainText('pas un classeur .xlsx valide');
+  await expect(page.getByTestId('run-ref')).toHaveText(before!);
+});
+
 test('un lien de partage altéré est refusé avec un message, et ALFA est calculé', async ({ page }) => {
   await page.goto('./#s=N4IgdghgtgpiBc');
   await expect(page.getByRole('status').first()).toContainText('Lien de partage invalide');

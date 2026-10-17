@@ -1,6 +1,7 @@
 /** Import par glisser-déposer ou sélection : budget, registre ou scénario, contrôlés avant tout calcul. */
 import * as XLSX from 'xlsx';
-import { importBudget, importRegistry, importScenarioBudget, ImportFailure, readWorkbook, workbookKind, type ImportError } from '../io/excel.ts';
+import { importBudget, importRegistry, importScenarioBudget, ImportFailure, readCsvSheet, readWorkbook, workbookKind, type ImportError } from '../io/excel.ts';
+import { checkFiles } from '../io/limits.ts';
 import { app } from './state.svelte.ts';
 
 export interface ImportOutcome {
@@ -10,22 +11,27 @@ export interface ImportOutcome {
 }
 
 async function toWorkbook(files: File[]): Promise<XLSX.WorkBook> {
-  const xlsx = files.find((f) => /\.xlsx?$/i.test(f.name));
-  if (xlsx) return readWorkbook(new Uint8Array(await xlsx.arrayBuffer()));
+  const xlsx = files.filter((f) => /\.xlsx$/i.test(f.name));
+  if (xlsx.length > 1 || (xlsx.length && xlsx.length < files.length)) {
+    throw new ImportFailure([{ feuille: 'import', ligne: null, message: 'un seul classeur .xlsx à la fois, ou des fichiers .csv seuls' }]);
+  }
+  if (xlsx.length) return readWorkbook(new Uint8Array(await xlsx[0].arrayBuffer()), xlsx[0].name);
   // CSV : une feuille par fichier, nommée d'après le fichier (VENTES.csv, CHARGES.csv, PARAMETRES.csv…).
   const wb = XLSX.utils.book_new();
   for (const f of files) {
     if (!/\.csv$/i.test(f.name)) continue;
-    const text = await f.text();
-    const parsed = XLSX.read(text, { type: 'string', FS: text.split('\n')[0].includes(';') ? ';' : ',' });
+    const sheet = readCsvSheet(await f.text(), f.name);
     const name = f.name.replace(/\.csv$/i, '').toUpperCase().replace(/^.*?(PARAMETRES|VENTES|CHARGES|HYPOTHESES|EVENEMENTS|CORRELATIONS|LEVIERS|STRESS)$/, '$1');
-    XLSX.utils.book_append_sheet(wb, parsed.Sheets[parsed.SheetNames[0]], name);
+    XLSX.utils.book_append_sheet(wb, sheet, name);
   }
   return wb;
 }
 
 export async function importFiles(files: File[]): Promise<ImportOutcome> {
   if (!files.length) return { ok: false, titre: 'Aucun fichier', errors: [] };
+  // Limites contrôlées avant toute lecture : nombre, format et taille des fichiers.
+  const refused = checkFiles(files);
+  if (refused.length) return { ok: false, titre: 'Fichier refusé avant lecture', errors: refused };
   try {
     const wb = await toWorkbook(files);
     const kind = workbookKind(wb);

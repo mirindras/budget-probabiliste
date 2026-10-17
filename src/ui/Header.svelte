@@ -76,7 +76,7 @@
     <button class:active={app.vue === 'analyse'} aria-pressed={app.vue === 'analyse'} onclick={() => app.setVue('analyse')} data-testid="vue-analyse">Analyse détaillée</button>
   </div>
   <div class="actions">
-    <input bind:this={fileInput} type="file" accept=".xlsx,.xls,.csv" multiple hidden onchange={picked} data-testid="file-input" />
+    <input bind:this={fileInput} type="file" accept=".xlsx,.csv" multiple hidden onchange={picked} data-testid="file-input" />
     <div class="menu-wrap">
       <button onclick={() => (menu = !menu)} aria-expanded={menu} disabled={exporting} data-testid="fichiers">{exporting ? 'Export…' : 'Fichiers ▾'}</button>
       {#if menu}

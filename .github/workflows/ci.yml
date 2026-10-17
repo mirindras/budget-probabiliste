@@ -22,6 +22,8 @@ jobs:
           node-version: 22
           cache: npm
       - run: npm ci
+      - name: Dépendance SheetJS (source, empreinte, version corrigée)
+        run: npm run check:sheetjs
       - name: Types
         run: npm run check
       - name: Recette du moteur (Vitest) et couverture

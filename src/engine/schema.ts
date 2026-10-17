@@ -15,7 +15,9 @@ const STRESS_PARAMS: Record<string, string[]> = { S1: ['choc'], S2: ['choc'], S3
 type Obj = Record<string, unknown>;
 const isObj = (x: unknown): x is Obj => typeof x === 'object' && x !== null && !Array.isArray(x);
 const isNum = (x: unknown): x is number => typeof x === 'number' && Number.isFinite(x);
-const isStr = (x: unknown): x is string => typeof x === 'string';
+/** Longueur maximale d'un texte libre (libellé, justification…). */
+const TEXT_MAX = 2000;
+const isStr = (x: unknown): x is string => typeof x === 'string' && x.length <= TEXT_MAX;
 const isInt = (x: unknown): x is number => Number.isInteger(x);
 const isPair = (x: unknown): x is [number, number] => Array.isArray(x) && x.length === 2 && isNum(x[0]) && isNum(x[1]);
 
@@ -32,7 +34,7 @@ function checkCodes(where: string, items: Obj[], expected: readonly string[], er
 
 function checkHypothesis(h: Obj, errors: string[]): void {
   const c = String(h.code);
-  for (const f of ['libelle', 'proprietaire', 'justification']) if (!isStr(h[f])) errors.push(`${c} : champ ${f} absent ou non textuel`);
+  for (const f of ['libelle', 'proprietaire', 'justification']) if (!isStr(h[f])) errors.push(`${c} : champ ${f} absent, non textuel ou de plus de ${TEXT_MAX} caractères`);
   if (!STATUTS.includes(h.statut as string)) errors.push(`${c} : statut inconnu`);
   if (h.k !== undefined && !isNum(h.k)) errors.push(`${c} : k non numérique`);
   if (c === 'H06') {
@@ -47,7 +49,7 @@ function checkHypothesis(h: Obj, errors: string[]): void {
 
 function checkEvent(e: Obj, errors: string[]): void {
   const c = String(e.code);
-  for (const f of ['libelle', 'proprietaire', 'justification', 'cible']) if (!isStr(e[f])) errors.push(`${c} : champ ${f} absent ou non textuel`);
+  for (const f of ['libelle', 'proprietaire', 'justification', 'cible']) if (!isStr(e[f])) errors.push(`${c} : champ ${f} absent, non textuel ou de plus de ${TEXT_MAX} caractères`);
   if (!isNum(e.p)) errors.push(`${c} : probabilité non numérique`);
   if (!isPair(e.amplitude)) errors.push(`${c} : amplitude attendue sous la forme [minimum, maximum]`);
   if (e.surcout !== undefined && !isPair(e.surcout)) errors.push(`${c} : surcoût attendu sous la forme [minimum, maximum]`);
@@ -96,7 +98,9 @@ export function checkScenarioShape(x: unknown): string[] {
     for (const e of evts) checkEvent(e, errors);
   }
   const corr = reg.correlations_rang;
+  const pairs = (DRIVER_CODES.length * (DRIVER_CODES.length - 1)) / 2;
   if (!Array.isArray(corr)) errors.push('Registre : corrélations absentes');
+  else if (corr.length > pairs) errors.push(`Registre : ${corr.length} corrélations, ${pairs} paires possibles au plus`);
   else {
     corr.forEach((c, i) => {
       const ok = Array.isArray(c) && c.length >= 3 && DRIVER_CODES.includes(c[0]) && DRIVER_CODES.includes(c[1]) && isNum(c[2]);
