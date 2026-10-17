@@ -12,8 +12,8 @@ FP&A probabiliste : budget, atterrissage, risque, backtest et arbitrages, sur un
 ![Données](https://img.shields.io/badge/données-synthétiques-5E6B7E)
 ![Langue](https://img.shields.io/badge/langue-français-5E6B7E)
 
-![Vitest](https://img.shields.io/badge/Vitest-102_tests-2B6E4A)
-![Playwright](https://img.shields.io/badge/Playwright-17_parcours-2B6E4A)
+![Vitest](https://img.shields.io/badge/Vitest-114_tests-2B6E4A)
+![Playwright](https://img.shields.io/badge/Playwright-18_parcours-2B6E4A)
 ![Couverture](https://img.shields.io/badge/couverture-96_%25-2B6E4A)
 ![TypeScript](https://img.shields.io/badge/TypeScript-5-1769AA?logo=typescript&logoColor=white)
 ![Svelte](https://img.shields.io/badge/Svelte-5-B87333?logo=svelte&logoColor=white)
@@ -112,6 +112,10 @@ Chaque action est testée sur exactement les mêmes 10 000 années que le budget
 | ![Origine du risque : contributions, effet isolé, événements](docs/images/origine-du-risque.png) | ![Trajectoire mensuelle avec 6 mois clos au réel](docs/images/trajectoire.png) |
 | Contribution relative de chaque hypothèse, effet d'une action ciblée, écart entre les années avec et sans chaque événement. | Les mois clos sont figés au réel ; la probabilité est recalculée à chaque clôture. |
 
+**Saisie guidée**, pour préparer les entrées sans rien oublier : chaque hypothèse et chaque événement avec la question à poser à son propriétaire, qui répond, où chercher et le piège à éviter ; une saisie en écart au budget relue en clair ; des contrôles en direct (fourchette incohérente, trop étroite, décentrée, justification manquante) ; une aide pour passer d'une fréquence observée à une probabilité ; et une revue de seize familles de risques, dont celles que le modèle ne couvre pas, nommées dans la note CODIR.
+
+<p align="center"><img src="docs/images/saisie-guidee.png" alt="Saisie guidée : question au propriétaire, fourchette relue en clair, contrôles" width="760"></p>
+
 **Pour restituer et partager** : une note CODIR d'une page A4 à imprimer, un lien qui rejoue exactement le même scénario, des exports Excel prêts pour Power BI. Pour essayer avec ses propres chiffres : télécharger le modèle Excel, le remplir, le déposer dans la page ; rien ne quitte le poste.
 
 <p align="center"><img src="docs/images/note-codir.png" alt="Note CODIR d'une page, lisible en niveaux de gris" width="640"></p>
@@ -176,11 +180,14 @@ src/
     backtest.ts        backtest, calibration, vérité connue (M8)
     synthetic.ts       générateur du jeu synthétique (section 16)
     controls.ts        contrôles C01 à C12 (M9)
+    guide.ts           questions de saisie, familles de risques à revoir
+    readiness.ts       état de préparation des entrées (saisie guidée)
+    schema.ts          validation de structure d'un scénario venu de l'extérieur
     simulate.ts        orchestration d'un run, référence de run
     alfa.ts, types.ts  jeu ALFA préchargé, modèle de données
   engine-host.ts       traitement des requêtes, partagé par le worker et le repli
   worker.ts            calcul en tâche de fond
-  io/                  excel.ts (SheetJS), share.ts (lz-string), storage.ts (IndexedDB)
+  io/                  excel.ts (SheetJS), share.ts (lz-string), storage.ts (IndexedDB), limits.ts (bornes des entrées)
   ui/                  vues Synthèse CODIR et Analyse détaillée, graphiques SVG, note imprimable (M10)
 data/alfa/             budget.json, registre.json : ALFA préchargée
 templates/             BUDGET_BASE.xlsx, REGISTRE_HYPOTHESES.xlsx
@@ -224,6 +231,7 @@ Douze contrôles s'exécutent à chaque run (réconciliation avec le budget, coh
 | TC14 calibration sur vérité connue, backtest | `tests/engine/backtest.test.ts` | automatisé |
 | TC17 lien de partage (moteur), TC18 import à 3 erreurs (moteur) | `tests/io/excel.test.ts` | automatisé |
 | TC15 performance, TC17 lien ouvert dans un autre navigateur, TC18 import dans l'écran, TC19 confidentialité, note sur une page, mobile, synthèse CODIR | `tests/e2e/*.spec.ts` | automatisé |
+| Saisie guidée : guide, contrôles de préparation, revue des risques | `tests/engine/readiness.test.ts`, `tests/e2e/outil.spec.ts` | automatisé |
 | Entrées externes : limites des fichiers et des liens, structure des scénarios | `tests/io/limits.test.ts`, `tests/engine/schema.test.ts`, `tests/e2e/outil.spec.ts` | automatisé |
 | TC20 prise en main par 3 testeurs non techniques | test utilisateur | à mener |
 
@@ -290,6 +298,7 @@ Le modèle mesure l'incertitude qu'on lui décrit, rien de plus : les risques ab
 - [x] Leviers, paquets de décisions et stress tests à aléa commun
 - [x] Atterrissage en cours d'année, backtest et calibration des fourchettes
 - [x] Import et export Excel, lien de partage, note CODIR d'une page, usage hors ligne
+- [x] Saisie guidée : question par entrée, contrôles de cohérence en direct, revue de seize familles de risques
 - [x] Contrôles C01 à C12, concordance avec le prototype Python, 19 cas de recette sur 20 automatisés
 
 ### Prochaines étapes

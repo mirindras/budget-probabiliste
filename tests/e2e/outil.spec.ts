@@ -73,6 +73,32 @@ test('TC17 : le lien de partage rejoue le même scénario dans un autre navigate
   await other.close();
 });
 
+test('saisie guidée : question, lecture en clair, contrôles et revue des risques', async ({ page }) => {
+  await ready(page);
+  await page.getByTestId('saisie-guidee').click();
+  const box = page.getByTestId('assistant');
+  await expect(page.getByTestId('assistant-progression')).toContainText('32 sur 33 prêts');
+  await page.getByTestId('guide-H01').click();
+  await expect(box).toContainText('Directeur commercial de la BU');
+  await page.getByTestId('p10-H01').fill('-8');
+  await page.getByTestId('p10-H01').press('Tab');
+  await expect(page.getByTestId('lecture-H01')).toContainText('−8,0 % du budget ou moins');
+  await page.getByTestId('just-H01').fill('voir');
+  await page.getByTestId('just-H01').press('Tab');
+  await expect(page.getByTestId('guide-H01')).toContainText('à revoir');
+  await expect(box).toContainText('Justification trop courte');
+  await expect(page.getByTestId('assistant-progression')).toContainText('31 sur 33 prêts');
+  await page.getByRole('button', { name: /Revue des risques/ }).click();
+  await page.getByTestId('decision-R14').selectOption('');
+  await expect(page.getByTestId('revue-R14')).toContainText('Pas encore passé en revue');
+  await page.getByRole('button', { name: /^6\s*Bilan/ }).click();
+  await expect(box).toContainText('Informatique, cyber, fraude');
+  await expect(box).toContainText('Fiscalité, douanes, réglementation');
+  await page.getByTestId('fermer-assistant').click();
+  // La modification part dans le calcul : le registre passe en brouillon, nouvelle version.
+  await expect(page.getByTestId('run-ref')).toContainText('registre v3');
+});
+
 test('un fichier hors limites est refusé avant lecture, sans calcul', async ({ page }) => {
   await ready(page);
   const before = await page.getByTestId('run-ref').textContent();

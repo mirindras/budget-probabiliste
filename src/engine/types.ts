@@ -50,6 +50,19 @@ export interface RiskEvent {
 
 export type Correlation = [DriverCode, DriverCode, number, string?];
 
+/** Décision de la revue des risques : où le risque est traité, ou pourquoi il ne l'est pas. */
+export type RiskDecision = 'couvert' | 'stress' | 'non-significatif' | 'hors-modele';
+export const RISK_DECISIONS: RiskDecision[] = ['couvert', 'stress', 'non-significatif', 'hors-modele'];
+
+/** Une ligne de la revue des risques (guide.ts, catégories R01 à R16). */
+export interface RiskReview {
+  categorie: string;
+  decision: RiskDecision | null;
+  /** Hypothèses, événements ou stress qui portent le risque (« H01, E02 »). */
+  ref: string;
+  commentaire: string;
+}
+
 export interface Registry {
   version: string;
   statut: Status;
@@ -57,6 +70,8 @@ export interface Registry {
   evenements: RiskEvent[];
   correlations_rang: Correlation[];
   bruit_volumes: { phi: number; sigma_mensuel: number };
+  /** Revue des risques : chaque catégorie de risque passée en revue, pour ne rien oublier. */
+  revue_risques?: RiskReview[];
 }
 
 /** Budget de base au grain BU × mois (agrégé depuis le grain mois × BU × canal × famille). */

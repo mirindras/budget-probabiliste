@@ -28,6 +28,16 @@ Dans la colonne de gauche, cliquez sur une hypothèse : trois curseurs règlent 
 
 Modifier le registre crée une nouvelle version en brouillon. Pour la présenter, faites valider les fiches puis gelez le registre (onglet Registre).
 
+## 3 bis. Préparer toutes les entrées sans rien oublier : la saisie guidée
+
+Le bouton **Saisie guidée**, en haut de l'écran, passe en revue chaque entrée en six étapes : budget de base, hypothèses, événements, liens entre hypothèses, revue des risques, bilan. Un compteur indique combien d'éléments sont prêts.
+
+- **Une question par entrée**, à poser à son propriétaire, avec qui doit répondre, où chercher la réponse et le piège à éviter.
+- **Une saisie en écart au budget** : −3 veut dire 3 % sous le budget. Une phrase en clair relit la fourchette (« 1 chance sur 10 d'être à −4,5 % du budget ou moins… ») pour vérifier qu'elle dit bien ce que pense le propriétaire.
+- **Des contrôles en direct** : bloquant (P10 au-dessus du P50, propriétaire absent) ou à revoir (fourchette de moins de 1 %, valeur centrale loin du budget, justification trop courte, probabilité nulle ou quasi certaine).
+- **Une aide au calcul des probabilités** : « 2 années touchées sur 5 observées » donne une estimation prudente de 43 %, jamais 0 ni 100 %.
+- **La revue des risques** : seize familles (change, client clé, fiscalité, climat, cyber…) reçoivent chacune une décision. Un risque laissé hors modèle est nommé dans la note CODIR.
+
 ## 4. Aller plus loin : les onglets
 
 | Onglet | Pour quoi faire |
@@ -46,7 +56,7 @@ Modifier le registre crée une nouvelle version en brouillon. Pour la présenter
 
 ## 6. Essayer avec vos données
 
-Exporter → « Modèles Excel à remplir », complétez BUDGET_BASE.xlsx, puis déposez-le sur la page. Les erreurs s'affichent ligne par ligne et aucun calcul ne part tant qu'elles ne sont pas corrigées. « Revenir à ALFA » efface le brouillon conservé sur votre poste.
+Exporter → « Modèles Excel à remplir », complétez BUDGET_BASE.xlsx (le registre contient aussi une feuille GUIDE avec les questions à poser et une feuille REVUE_RISQUES), puis déposez-le sur la page. Les erreurs s'affichent ligne par ligne et aucun calcul ne part tant qu'elles ne sont pas corrigées. « Revenir à ALFA » efface le brouillon conservé sur votre poste.
 
 ## À retenir
 

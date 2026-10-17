@@ -3,7 +3,8 @@
  * champs obligatoires, types, codes attendus, bornes. Elle précède tout calcul, pour qu'un scénario
  * mal formé produise une erreur métier lisible et jamais une exception du moteur.
  */
-import { DRIVER_CODES, EVENT_CODES, HYP_CODES, type Scenario } from './types.ts';
+import { RISK_CATEGORIES } from './guide.ts';
+import { DRIVER_CODES, EVENT_CODES, HYP_CODES, RISK_DECISIONS, type Scenario } from './types.ts';
 
 const STATUTS = ['brouillon', 'valide', 'gele'];
 /** Paramètres attendus par levier et par stress (section 10). */
@@ -106,6 +107,17 @@ export function checkScenarioShape(x: unknown): string[] {
       const ok = Array.isArray(c) && c.length >= 3 && DRIVER_CODES.includes(c[0]) && DRIVER_CODES.includes(c[1]) && isNum(c[2]);
       if (!ok) errors.push(`Corrélation n° ${i + 1} : [code, code, valeur] attendu avec des codes du registre`);
     });
+  }
+  const rev = reg.revue_risques;
+  if (rev !== undefined) {
+    const cats = RISK_CATEGORIES.map((c) => c.code);
+    if (!Array.isArray(rev) || rev.length > cats.length) errors.push(`Revue des risques : liste de ${cats.length} catégories au plus attendue`);
+    else {
+      rev.forEach((r, i) => {
+        const ok = isObj(r) && cats.includes(r.categorie as string) && (r.decision === null || RISK_DECISIONS.includes(r.decision as never)) && isStr(r.ref) && isStr(r.commentaire);
+        if (!ok) errors.push(`Revue des risques, ligne ${i + 1} : catégorie, décision, référence et commentaire attendus`);
+      });
+    }
   }
   const bv = reg.bruit_volumes;
   if (!(isObj(bv) && isNum(bv.phi) && bv.phi > -1 && bv.phi < 1 && isNum(bv.sigma_mensuel) && bv.sigma_mensuel >= 0)) {

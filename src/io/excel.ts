@@ -6,6 +6,7 @@
 import * as XLSX from 'xlsx';
 import { ALFA_COMPACT, alfaLevers, alfaStress, TOOL_VERSION } from '../engine/alfa.ts';
 import { reconciliation } from '../engine/controls.ts';
+import { DECISION_LABEL, EVENT_GUIDE, fullReview, HYP_GUIDE, RISK_CATEGORIES } from '../engine/guide.ts';
 import { checkCsvText, checkSheetRange, checkXlsxBytes, LIMITS } from './limits.ts';
 import type { RunOutput } from '../engine/simulate.ts';
 import type { Draws } from '../engine/sampling.ts';
@@ -261,7 +262,13 @@ export function registryWorkbook(s: Scenario): XLSX.WorkBook {
     [MENTION],
     ['Règles : P10 < P50 < P90 (R-HY-01) ; un propriétaire et une justification par ligne (principe 3) ; corrélations de rang entre -0,9 et +0,9 (R-DE-01).'],
     ['H07 se saisit par P10 et P90 (loi lognormale, P50 vide) ; H06 par départ, dérive annuelle et volatilité mensuelle (marche aléatoire) ; renseigner min et max pour une loi PERT.'],
+    ['Feuille GUIDE : la question à poser à chaque propriétaire, où chercher la réponse, le piège à éviter. Feuille REVUE_RISQUES : une décision par catégorie de risque, pour ne rien oublier.'],
   ]), 'LISEZ_MOI');
+  XLSX.utils.book_append_sheet(wb, sheet([
+    ['code', 'libelle', 'question', 'qui_repond', 'sources', 'piege'],
+    ...r.hypotheses.map((h) => { const g = HYP_GUIDE[h.code]; return [h.code, h.libelle, g.question, g.qui, g.sources, g.piege]; }),
+    ...r.evenements.map((e) => { const g = EVENT_GUIDE[e.code]; return [e.code, e.libelle, g.question, g.qui, g.sources, g.piege]; }),
+  ]), 'GUIDE');
   XLSX.utils.book_append_sheet(wb, sheet([
     ['cle', 'valeur'], ['version', r.version], ['statut', r.statut], ['n', s.n], ['graine', s.graine],
     ['phi', r.bruit_volumes.phi], ['sigma_mensuel', r.bruit_volumes.sigma_mensuel], ['version_outil', TOOL_VERSION],
@@ -276,6 +283,15 @@ export function registryWorkbook(s: Scenario): XLSX.WorkBook {
     ...r.evenements.map((e) => [e.code, e.libelle, e.proprietaire, e.p, e.amplitude[0], e.amplitude[1], e.surcout?.[0] ?? null, e.surcout?.[1] ?? null, e.duree, e.cible, e.justification, e.statut]),
   ]), 'EVENEMENTS');
   XLSX.utils.book_append_sheet(wb, sheet([['a', 'b', 'correlation_rang', 'justification'], ...r.correlations_rang.map((c) => [c[0], c[1], c[2], c[3] ?? ''])]), 'CORRELATIONS');
+  XLSX.utils.book_append_sheet(wb, sheet([
+    ['categorie', 'libelle', 'question', 'decision', 'reference', 'commentaire'],
+    ...fullReview(r.revue_risques).map((x) => {
+      const c = RISK_CATEGORIES.find((y) => y.code === x.categorie)!;
+      return [x.categorie, c.libelle, c.question, x.decision ?? '', x.ref, x.commentaire];
+    }),
+    [],
+    [`Décisions possibles : ${Object.keys(DECISION_LABEL).join(', ')}.`],
+  ]), 'REVUE_RISQUES');
   XLSX.utils.book_append_sheet(wb, sheet([
     ['code', 'libelle', 'description', 'hypotheses', 'regle', 'cout_gar', 'cout_libelle', 'mois_effet', 'proprietaire', 'faisabilite', 'parametres'],
     ...s.leviers.map((l) => [l.code, l.libelle, l.description, l.hypotheses, l.regle, l.cout, l.coutLibelle, l.mois, l.proprietaire, l.faisabilite, params(l.params)]),
@@ -393,6 +409,16 @@ export function importRegistry(wb: XLSX.WorkBook, current: Scenario): Scenario {
     if (Number.isFinite(num(kv.graine))) s.graine = num(kv.graine);
     if (Number.isFinite(num(kv.phi))) reg.bruit_volumes.phi = num(kv.phi);
     if (Number.isFinite(num(kv.sigma_mensuel))) reg.bruit_volumes.sigma_mensuel = num(kv.sigma_mensuel);
+  }
+  const rv = rows(wb, 'REVUE_RISQUES');
+  if (rv) {
+    const known = Object.keys(DECISION_LABEL);
+    const lignes = rv.map((r, k) => ({ r, ligne: k + 2 })).filter(({ r }) => RISK_CATEGORIES.some((c) => c.code === String(r.categorie ?? '').trim()));
+    reg.revue_risques = lignes.map(({ r, ligne }) => {
+      const d = String(r.decision ?? '').trim();
+      if (d && !known.includes(d)) errors.push({ feuille: 'REVUE_RISQUES', ligne, message: `décision « ${d} » inconnue (${known.join(', ')})` });
+      return { categorie: String(r.categorie).trim(), decision: known.includes(d) ? (d as never) : null, ref: String(r.reference ?? '').trim(), commentaire: String(r.commentaire ?? '').trim() };
+    });
   }
   const lv = rows(wb, 'LEVIERS');
   if (lv) {

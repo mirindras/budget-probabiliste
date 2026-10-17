@@ -42,5 +42,23 @@
     ["H11", "H02", -0.3, "promotions de relance quand les volumes décrochent"]
   ],
   "bruit_volumes": { "phi": 0.6, "sigma_mensuel": 0.03 },
-  "simulation": { "n": 10000, "graine": 2027 }
+  "simulation": { "n": 10000, "graine": 2027 },
+  "revue_risques": [
+    {"categorie": "R01", "decision": "couvert", "ref": "H01, H02, H03", "commentaire": "Tendance et dispersion des 5 derniers exercices par BU."},
+    {"categorie": "R02", "decision": "couvert", "ref": "H04", "commentaire": "Hausse de janvier négociée ; remises GMS dans la fourchette."},
+    {"categorie": "R03", "decision": "couvert", "ref": "H05", "commentaire": "Écarts de mix observés sur 3 exercices."},
+    {"categorie": "R04", "decision": "couvert", "ref": "H06", "commentaire": "Marche aléatoire calibrée sur 60 mois, corrélée aux achats et aux frais."},
+    {"categorie": "R05", "decision": "couvert", "ref": "H07, H08", "commentaire": "Contrats annuels et inflation domestique."},
+    {"categorie": "R06", "decision": "couvert", "ref": "H09, E01, E03", "commentaire": "Tarifs, révision du carburant et retards de navire."},
+    {"categorie": "R07", "decision": "couvert", "ref": "H10", "commentaire": "Accord salarial signé ; rattrapage possible si l'inflation dérape."},
+    {"categorie": "R08", "decision": "couvert", "ref": "H11, H12", "commentaire": "Plan promotionnel et frais sensibles au change."},
+    {"categorie": "R09", "decision": "couvert", "ref": "E02", "commentaire": "Perte d'un grand compte GMS ; impayés historiquement négligeables."},
+    {"categorie": "R10", "decision": "couvert", "ref": "E03", "commentaire": "Retards de navire ; pas de fournisseur unique hors importations."},
+    {"categorie": "R11", "decision": "hors-modele", "ref": "", "commentaire": "Hausse des droits de douane évoquée pour la loi de finances 2027, non chiffrable à ce stade : suivie au CODIR."},
+    {"categorie": "R12", "decision": "hors-modele", "ref": "", "commentaire": "Saison cyclonique : effet logistique en partie porté par E03, effet sur la demande non modélisé."},
+    {"categorie": "R13", "decision": "couvert", "ref": "H12", "commentaire": "Énergie dans les frais généraux ; groupes électrogènes sur les deux entrepôts."},
+    {"categorie": "R14", "decision": "non-significatif", "ref": "", "commentaire": "Facturation sur logiciel hébergé avec reprise sous 24 heures : impact jugé inférieur à 10 MAr."},
+    {"categorie": "R15", "decision": "couvert", "ref": "H04, E02", "commentaire": "Pression concurrentielle dans la fourchette de prix et la perte de grand compte."},
+    {"categorie": "R16", "decision": "non-significatif", "ref": "", "commentaire": "Taux, impôt et dépréciations sont sous l'EBITDA : sans effet sur l'indicateur suivi."}
+  ]
 }

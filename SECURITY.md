@@ -24,13 +24,13 @@ Un fichier hors limites est refusé avec un message localisé, et aucun calcul n
 
 Le scénario voyage compressé dans l'ancre de l'URL, jamais envoyée au serveur. [src/io/share.ts](src/io/share.ts) le borne en trois temps :
 
-1. avant décompression : 12 000 caractères au plus, alphabet de lz-string seulement (un lien ALFA en fait 5 124) ;
-2. avant analyse JSON : 100 000 caractères décompressés au plus (7 573 pour ALFA) ;
+1. avant décompression : 16 000 caractères au plus, alphabet de lz-string seulement (un lien ALFA en fait 6 467) ; un scénario plus long n'est pas mis en lien, il part dans un fichier Excel ;
+2. avant analyse JSON : 100 000 caractères décompressés au plus (9 863 pour ALFA) ;
 3. avant calcul : structure complète (codes attendus, types, bornes, textes de 2 000 caractères au plus), puis règles métier.
 
 Un lien refusé ouvre le jeu ALFA et affiche « Lien de partage invalide » avec la raison.
 
-Limite connue : lz-string ne permet pas de borner la décompression elle-même. Avec 12 000 caractères en entrée, le pire cas théorique reste de l'ordre de quelques dizaines de mégaoctets, transitoires, avant le refus de l'étape 2.
+Limite connue : lz-string ne permet pas de borner la décompression elle-même. Avec 16 000 caractères en entrée, le pire cas théorique reste de l'ordre de quelques dizaines de mégaoctets, transitoires, avant le refus de l'étape 2.
 
 ## Dépendance SheetJS
 

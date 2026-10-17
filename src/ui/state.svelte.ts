@@ -48,6 +48,8 @@ class AppState {
   journal = $state<JournalEntry[]>([]);
   seedLog = $state<{ date: string; de: number; vers: number; motif: string }[]>([]);
   notice = $state<string | null>(null);
+  /** Saisie guidée ouverte. */
+  guide = $state(false);
   toast = $state<string | null>(null);
   ready = $state(false);
   /** Vue affichée : synthèse pour le CFO et le CODIR, ou analyse détaillée pour le CDG et le FP&A. */

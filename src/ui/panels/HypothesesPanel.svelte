@@ -62,7 +62,7 @@
     <h2>Ce qu'on suppose</h2>
     <span class="small muted">registre {reg.version}{reg.statut === 'brouillon' ? ' (brouillon)' : reg.statut === 'gele' ? ' (gelé)' : ''}</span>
   </div>
-  <p class="small muted intro">Chaque propriétaire donne une fourchette : 1 chance sur 10 d'être en dessous (P10), valeur centrale (P50), 1 chance sur 10 d'être au-dessus (P90). Cliquez pour modifier.</p>
+  <p class="small muted intro">Chaque propriétaire donne une fourchette : 1 chance sur 10 d'être en dessous (P10), valeur centrale (P50), 1 chance sur 10 d'être au-dessus (P90). Cliquez pour modifier, ou <button class="link" onclick={() => (app.guide = true)}>ouvrez la saisie guidée</button> pour tout passer en revue.</p>
 
   {#each GROUPS as g (g.titre)}
     <h3>{g.titre}</h3>

@@ -60,12 +60,14 @@ Registre réimportable : l'outil l'exporte, on le réédite, on le redépose.
 
 | Feuille | Colonnes |
 | --- | --- |
+| GUIDE | code, libelle, question, qui_repond, sources, piege : la question à poser au propriétaire de chaque hypothèse et événement (lecture seule, ignorée à l'import) |
 | PARAMETRES | version, statut, n, graine, phi, sigma_mensuel, version_outil |
 | HYPOTHESES | code (H01 à H12), libelle, proprietaire, unite, grain, p10, p50, p90, min, max, depart, derive_annuelle, volatilite_mensuelle, k, justification, statut |
 | EVENEMENTS | code (E01 à E03), libelle, proprietaire, p, amplitude_min, amplitude_max, surcout_min_gar, surcout_max_gar, duree, cible, justification, statut |
 | CORRELATIONS | a, b, correlation_rang (entre -0,9 et +0,9), justification |
 | LEVIERS | code, libelle, description, hypotheses, regle, cout_gar, cout_libelle, mois_effet, proprietaire, faisabilite, parametres |
 | STRESS | code, libelle, regle, mois_effet, parametres |
+| REVUE_RISQUES | categorie (R01 à R16), libelle, question, decision (couvert, stress, non-significatif, hors-modele, ou vide), reference, commentaire. Facultative à l'import |
 
 Règles de saisie :
 
@@ -73,6 +75,7 @@ Règles de saisie :
 - Laisser p50 vide pour une loi lognormale saisie par P10 et P90 (H07) ; renseigner min et max pour une loi PERT ; H06 se saisit par depart, derive_annuelle et volatilite_mensuelle.
 - k est le coefficient d'élargissement issu du backtest, entre 1 et 2 (R-BT-03).
 - La loi n'est pas saisie : elle découle de la table 5.3 de la SFD (normale si l'asymétrie est entre 0,9 et 1,1, split-normale sinon).
+- Revue des risques : chaque famille reçoit une décision ; `reference` cite l'hypothèse, l'événement ou le stress qui la couvre ; `commentaire` explique un risque non significatif ou hors modèle. Les risques hors modèle sont nommés dans la note CODIR.
 - `parametres` d'un levier : liste `cle=valeur` séparée par des points-virgules, par exemple `hausse=0.01; elasticite=-0.8`.
 
 ## 3. Résultats exportés (schéma en étoile)

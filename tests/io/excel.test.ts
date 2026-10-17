@@ -112,6 +112,19 @@ describe('registre et scénario', () => {
     expect(back.leviers[1].params.hausse).toBe(0.02);
     expect(back.n).toBe(10000);
   });
+  test('registre Excel : feuille GUIDE et revue des risques, relue à l\'import', () => {
+    const s = alfaScenario();
+    s.registre.revue_risques![10] = { categorie: 'R11', decision: 'stress', ref: 'S1', commentaire: 'Test.' };
+    const wb = roundTrip(registryWorkbook(s));
+    const guide = XLSX.utils.sheet_to_json<Record<string, string>>(wb.Sheets.GUIDE);
+    expect(guide).toHaveLength(15);
+    expect(guide[0].question).toMatch(/volume Boissons/);
+    const back = importRegistry(wb, { ...alfaScenario(), registre: { ...alfaScenario().registre, revue_risques: undefined } });
+    expect(back.registre.revue_risques).toEqual(s.registre.revue_risques);
+    const bad = roundTrip(registryWorkbook(s));
+    bad.Sheets.REVUE_RISQUES.D3 = { t: 's', v: 'peut-être' };
+    expect(errorsOf(() => importRegistry(bad, alfaScenario())).join()).toMatch(/REVUE_RISQUES\|3\|décision « peut-être » inconnue/);
+  });
   test('registre incohérent : erreurs localisées', () => {
     const wb = roundTrip(registryWorkbook(alfaScenario()));
     const h = wb.Sheets.HYPOTHESES;

@@ -6,9 +6,9 @@ import type { Scenario } from '../engine/types.ts';
 export const HASH_KEY = 's';
 /**
  * Bornes du lien, contrôlées avant décompression puis avant analyse JSON.
- * Un lien ALFA fait 5 124 caractères pour 7 573 caractères de JSON : la marge est large.
+ * Un lien ALFA fait 6 467 caractères pour 9 863 caractères de JSON, revue des risques comprise.
  */
-export const LINK_LIMITS = { encoded: 12_000, json: 100_000 } as const;
+export const LINK_LIMITS = { encoded: 16_000, json: 100_000 } as const;
 
 export function encodeScenario(s: Scenario): string {
   return compressToEncodedURIComponent(JSON.stringify(s));

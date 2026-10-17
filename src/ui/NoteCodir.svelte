@@ -1,5 +1,6 @@
 <script lang="ts">
   import Histogram from './charts/Histogram.svelte';
+  import { RISK_CATEGORIES } from '../engine/guide.ts';
   import { gar, num, pct, pct5, pts } from './format.ts';
   import { app } from './state.svelte.ts';
 
@@ -16,6 +17,10 @@
   const topBlock = $derived(r ? [...r.contributions.blocks].sort((a, b) => b.part - a.part)[0] : null);
   const topCommercial = $derived(r?.contributions.items.find((i) => ['H01', 'H02', 'H03', 'H04', 'H05', 'H11', 'E02'].includes(i.code)));
   const bt = $derived(app.backtest);
+  /** Revue des risques : ceux qui restent hors modèle sont nommés, ceux qui n'ont pas été revus aussi. */
+  const revue = $derived(app.scenario.registre.revue_risques ?? []);
+  const horsModele = $derived(revue.filter((x) => x.decision === 'hors-modele').map((x) => RISK_CATEGORIES.find((c) => c.code === x.categorie)?.libelle.toLowerCase()).filter(Boolean));
+  const nonRevus = $derived(RISK_CATEGORIES.length - revue.filter((x) => x.decision).length);
   const ptsInt = (x: number) => `${x >= 0 ? '+' : '−'}${num(Math.abs(x * 100), 0)} points`;
 </script>
 
@@ -52,7 +57,7 @@
     </p>
     {#if bt}<p class="small">{bt.synthese}</p>{/if}
     <footer>
-      <p><b>Limites :</b> {app.isAlfa ? 'données de démonstration, ' : ''}corrélations estimées sur 5 ans, risques hors registre non couverts ; probabilités arrondies à 5 points, écarts entre leviers au point près ({levers.map((c) => `${c.code} ${pts(c.dProb, 1)}`).join(', ')}).</p>
+      <p><b>Limites :</b> {app.isAlfa ? 'données de démonstration, ' : ''}corrélations estimées sur 5 ans ; {#if horsModele.length}risques hors modèle : {horsModele.join(', ')}{#if nonRevus}, et {nonRevus} famille{nonRevus > 1 ? 's' : ''} de risque non revue{nonRevus > 1 ? 's' : ''}{/if}{:else if nonRevus}{nonRevus} famille{nonRevus > 1 ? 's' : ''} de risque non revue{nonRevus > 1 ? 's' : ''}{:else}toutes les familles de risque revues{/if} ; probabilités arrondies à 5 points, écarts entre leviers au point près ({levers.map((c) => `${c.code} ${pts(c.dProb, 1)}`).join(', ')}).</p>
       <p><b>Référence :</b> {r.ref.texte}.</p>
     </footer>
   </article>

@@ -1,7 +1,7 @@
 <script lang="ts">
   import { TOOL_VERSION } from '../engine/alfa.ts';
   import { budgetTemplate, registryWorkbook, scenarioWorkbook, workbookBytes } from '../io/excel.ts';
-  import { shareUrl } from '../io/share.ts';
+  import { encodeScenario, LINK_LIMITS, shareUrl } from '../io/share.ts';
   import { download } from './download.ts';
   import { importFiles, type ImportOutcome } from './importer.svelte.ts';
   import { app } from './state.svelte.ts';
@@ -16,6 +16,11 @@
   const canPrint = $derived(!!app.result && !app.result.partial && !app.result.blocking);
 
   async function share() {
+    if (app.isAlfa && encodeScenario($state.snapshot(app.scenario)).length > LINK_LIMITS.encoded) {
+      download(workbookBytes(scenarioWorkbook($state.snapshot(app.scenario), $state.snapshot(app.budget))), 'scenario.xlsx');
+      app.showToast('Scénario trop long pour un lien (justifications détaillées) : il part dans un fichier Excel, à réimporter tel quel.');
+      return;
+    }
     if (!app.isAlfa) {
       // R-RE-07 : un budget importé voyage dans un fichier, jamais dans un lien.
       download(workbookBytes(scenarioWorkbook($state.snapshot(app.scenario), $state.snapshot(app.budget))), 'scenario.xlsx');
@@ -92,6 +97,7 @@
         </div>
       {/if}
     </div>
+    <button onclick={() => (app.guide = true)} data-testid="saisie-guidee" title="Chaque entrée de l'outil, une question à la fois, avec les contrôles de cohérence">Saisie guidée</button>
     {#if !EMBEDDED}<button onclick={share} data-testid="partager" title="Copier un lien qui rejoue exactement ce scénario">Partager</button>{/if}
     <button onclick={onNote} disabled={!canPrint} title={app.result?.blocking ? 'Un contrôle bloquant est en échec (R-RE-06)' : 'Aperçu de la note CODIR d\'une page'} data-testid="apercu-note">Note CODIR</button>
     {#if !EMBEDDED}<button class="primary" onclick={() => window.print()} disabled={!canPrint} title={app.result?.blocking ? 'Un contrôle bloquant est en échec (R-RE-06)' : 'PDF d\'une page A4 via Imprimer'} data-testid="imprimer">Imprimer la note</button>{/if}
@@ -102,7 +108,9 @@
   .banner { display: flex; justify-content: space-between; align-items: center; gap: 12px; flex-wrap: wrap; padding: 10px 16px; background: var(--panel); border-bottom: 1px solid var(--line); position: sticky; top: env(safe-area-inset-top, 0px); z-index: 10; }
   h1 { font-size: 17px; font-weight: 700; }
   h1 .muted { font-weight: 500; }
-  .id { display: grid; }
+  .id { display: grid; min-width: 0; flex: 1 1 240px; }
+  .id > * { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  @media (max-width: 700px) { .id > * { white-space: normal; } }
   .actions { display: flex; gap: 6px; flex-wrap: wrap; }
   .views { display: inline-flex; padding: 3px; background: var(--soft); border-radius: 9px; gap: 2px; }
   .views button { border: none; background: transparent; border-radius: 7px; padding: 5px 12px; color: var(--muted); font-weight: 600; }

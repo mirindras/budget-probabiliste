@@ -1,6 +1,7 @@
 <script lang="ts">
   import { onMount } from 'svelte';
-  import CodirView from './CodirView.svelte';
+  import Assistant from './Assistant.svelte';
+import CodirView from './CodirView.svelte';
   import Header from './Header.svelte';
   import NoteCodir from './NoteCodir.svelte';
   import HypothesesPanel from './panels/HypothesesPanel.svelte';
@@ -149,6 +150,7 @@
 {#if app.toast}<div class="toast screen-only" role="status">{app.toast}</div>{/if}
 
 <NoteCodir />
+{#if app.guide}<Assistant onclose={() => (app.guide = false)} {onImport} />{/if}
 {#if showNote && app.result && !app.result.partial}
   <div class="overlay screen-only" role="dialog" aria-modal="true" aria-label="Note CODIR">
     <div class="overlay-bar">
