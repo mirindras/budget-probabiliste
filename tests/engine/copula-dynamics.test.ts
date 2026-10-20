@@ -4,10 +4,14 @@ import {
   checkMatrixRules, cholesky, copulaToRank, eigenSym, identity, minEigen, nearestCorrelation, rankMatrix, rankToCopula, setupCopula,
 } from '../../src/engine/copula.ts';
 import { ar1, fxPath, fxWeights, persistenceMultiplier } from '../../src/engine/dynamics.ts';
+import { buildModel, driverCodes } from '../../src/engine/model.ts';
 import { Rng } from '../../src/engine/rng.ts';
 import { drawAll, latinHypercube, seasonality } from '../../src/engine/sampling.ts';
 import { normInv, percentile, spearman, std } from '../../src/engine/stats.ts';
 import type { Correlation, Registry } from '../../src/engine/types.ts';
+
+/** Ordre des facteurs de la copule : hypothèses puis événements, dans l'ordre du registre. */
+const CODES = driverCodes(alfaRegistry());
 
 describe('corrélations de rang et copule (annexe D)', () => {
   test('table de conversion rang → copule', () => {
@@ -16,7 +20,8 @@ describe('corrélations de rang et copule (annexe D)', () => {
     expect(copulaToRank(rankToCopula(0.37))).toBeCloseTo(0.37, 12);
   });
   test('R-DE-02 : matrice ALFA semi-définie positive, plus petite valeur propre 0,227', () => {
-    const c = setupCopula(alfaRegistry().correlations_rang);
+    const c = setupCopula(alfaRegistry().correlations_rang, CODES);
+    expect(CODES).toHaveLength(15);
     expect(c.corrected).toBe(false);
     expect(c.minEigenBefore).toBeCloseTo(0.227, 3);
     const L = c.cholesky;
@@ -29,13 +34,15 @@ describe('corrélations de rang et copule (annexe D)', () => {
   test('TC05 : deux hypothèses, cible +0,5 : corrélation de rang 0,50 à ±0,02', () => {
     const reg = alfaRegistry();
     reg.correlations_rang = [['H01', 'H03', 0.5]];
-    const d = drawAll(reg, alfaBudget(), { n: 10000, graine: 5 });
-    expect(Math.abs(spearman(d.h.H01, d.h.H03) - 0.5)).toBeLessThan(0.02);
-    expect(Math.abs(spearman(d.h.H01, d.h.H02))).toBeLessThan(0.03);
+    const m = buildModel(alfaBudget(), reg);
+    const d = drawAll(m, { n: 10000, graine: 5 });
+    const h = (code: string) => d.h[m.hypIndex.get(code)!];
+    expect(Math.abs(spearman(h('H01'), h('H03')) - 0.5)).toBeLessThan(0.02);
+    expect(Math.abs(spearman(h('H01'), h('H02')))).toBeLessThan(0.03);
   });
   test('TC06 : matrice incohérente corrigée (Higham), alerte et paires déplacées listées', () => {
     const bad: Correlation[] = [['H01', 'H02', 0.9], ['H02', 'H03', 0.9], ['H01', 'H03', -0.9]];
-    const c = setupCopula(bad);
+    const c = setupCopula(bad, CODES);
     expect(c.minEigenBefore).toBeLessThan(0);
     expect(c.corrected).toBe(true);
     expect(c.minEigenAfter).toBeGreaterThan(0);
@@ -54,10 +61,12 @@ describe('corrélations de rang et copule (annexe D)', () => {
     expect(e[1]).toBeCloseTo(3, 10);
   });
   test('R-DE-01 : règles de saisie de la matrice', () => {
-    expect(checkMatrixRules(alfaRegistry().correlations_rang)).toEqual([]);
-    const errs = checkMatrixRules([['H01', 'H01', 0.2], ['H01', 'H02', 0.95], ['H02', 'H01', 0.1], ['X9' as never, 'H02', 0.1]]);
+    expect(checkMatrixRules(alfaRegistry().correlations_rang, CODES)).toEqual([]);
+    const errs = checkMatrixRules([['H01', 'H01', 0.2], ['H01', 'H02', 0.95], ['H02', 'H01', 0.1], ['X9', 'H02', 0.1]], CODES);
     expect(errs.length).toBe(4);
-    expect(rankMatrix([['H01', 'H02', 0.4]])[0][1]).toBe(0.4);
+    expect(rankMatrix([['H01', 'H02', 0.4]], CODES)[0][1]).toBe(0.4);
+    // Un registre configuré : les codes sont ceux de l'utilisateur, la matrice suit leur ordre.
+    expect(rankMatrix([['VOL', 'LOYERS', -0.3]], ['VOL', 'PRIX', 'LOYERS'])[0][2]).toBe(-0.3);
   });
 });
 
@@ -85,7 +94,7 @@ describe('dynamiques mensuelles (annexe C)', () => {
     expect(sums(0.8) / sums(0) / 2.43).toBeLessThan(1.03);
   });
   test('TC08 : bruit recentré φ = 0,6, total annuel inchangé à 0,01 % près', () => {
-    const seas = seasonality(alfaBudget());
+    const seas = seasonality(buildModel(alfaBudget(), alfaRegistry()));
     const r = new Rng(3);
     const buf = new Float64Array(12);
     for (let i = 0; i < 2000; i++) {
@@ -136,15 +145,18 @@ describe('dynamiques mensuelles (annexe C)', () => {
 describe('tirages complets (M4)', () => {
   test('C11 et bornes : mois clos à zéro, événements limités aux mois restants', () => {
     const reg: Registry = alfaRegistry();
-    const d = drawAll(reg, alfaBudget(), { n: 2000, graine: 1, moisClos: 6, dernierCours: 5300 });
+    const m = buildModel(alfaBudget(), reg);
+    const d = drawAll(m, { n: 2000, graine: 1, moisClos: 6, dernierCours: 5300 });
+    const e01 = m.eventIndex.get('E01')!;
+    const e02 = m.eventIndex.get('E02')!;
     for (let i = 0; i < d.n; i++) {
-      expect(d.month.E01[i]).toBeGreaterThanOrEqual(6);
+      expect(d.month[e01][i]).toBeGreaterThanOrEqual(6);
       for (let t = 0; t < 6; t++) expect(d.noise[i * 36 + t]).toBe(0);
     }
     let f = 0;
-    for (let i = 0; i < d.n; i++) f += d.occ.E02[i];
+    for (let i = 0; i < d.n; i++) f += d.occ[e02][i];
     expect(f / d.n).toBeCloseTo(0.075, 2);
-    const simple = drawAll(reg, alfaBudget(), { n: 1000, graine: 1, simple: true });
+    const simple = drawAll(m, { n: 1000, graine: 1, simple: true });
     expect(simple.n).toBe(1000);
   });
 });

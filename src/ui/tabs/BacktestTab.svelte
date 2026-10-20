@@ -1,13 +1,16 @@
 <script lang="ts">
   import { onMount } from 'svelte';
+  import { alfaRegistry } from '../../engine/alfa.ts';
   import { applyCalibration } from '../../engine/backtest.ts';
   import { num, pct } from '../format.ts';
   import { app } from '../state.svelte.ts';
+  import { units } from '../units.svelte.ts';
 
   let error = $state<string | null>(null);
   onMount(() => {
-    app.loadBacktest().catch((e: Error) => (error = e.message));
+    if (app.isAlfa) app.loadBacktest().catch((e: Error) => (error = e.message));
   });
+  const marge = new Set(alfaRegistry().hypotheses.filter((h) => h.effet === 'marge').map((h) => h.code));
   const bt = $derived(app.backtest);
   const labels = $derived(Object.fromEntries(app.scenario.registre.hypotheses.map((h) => [h.code, h.libelle])));
   const applied = $derived(app.scenario.registre.hypotheses.every((h) => (h.k ?? 1) !== 1));
@@ -19,7 +22,13 @@
   }
 </script>
 
-{#if error}
+{#if !app.isAlfa}
+  <section class="na">
+    <h2>Le backtest rejoue les budgets passés de l'entreprise</h2>
+    <p class="small">Il compare les fourchettes de chaque exercice passé, saisies à l'époque, au réalisé trimestriel : il mesure si les fourchettes couvraient bien 80 % des réalisés et en déduit le coefficient d'élargissement k (R-BT-03). Il est disponible sur le jeu ALFA, qui fournit un historique synthétique 2024-2026.</p>
+    <p class="small muted">Pour votre budget : tant que l'historique n'est pas importé, saisissez k à la main dans l'onglet Registre si un rejeu fait hors de l'outil l'a mesuré, sinon laissez k = 1. L'import de l'historique est prévu à la feuille de route.</p>
+  </section>
+{:else if error}
   <p class="neg">{error}</p>
 {:else if !bt}
   <p class="muted">Rejeu des budgets 2024 à 2026…</p>
@@ -59,7 +68,7 @@
               <tr>
                 <td>{h.code} {labels[h.code]}</td>
                 <td class="num">{pct(h.couverture)}</td><td class="num">{pct(h.sousP10)}</td><td class="num">{pct(h.surP90)}</td>
-                <td class="num" class:neg={Math.abs(h.biais) > 0.01}>{h.code === 'H05' ? `${num(h.biais * 100, 2)} pt` : `${num(h.biais * 100, 1)} %`}</td>
+                <td class="num" class:neg={Math.abs(h.biais) > 0.01}>{marge.has(h.code) ? `${num(h.biais * 100, 2)} pt` : `${num(h.biais * 100, 1)} %`}</td>
                 <td class="num">{Number.isFinite(h.kBrut) ? num(h.kBrut, 2) : '∞'}</td>
                 <td class="muted">{h.alerte ?? ''}</td>
               </tr>
@@ -67,7 +76,7 @@
           </tbody>
         </table>
       </div>
-      <h3>EBITDA trimestriel : budget, distribution d'époque et réalisé (GAr)</h3>
+      <h3>EBITDA trimestriel : budget, distribution d'époque et réalisé ({units.principale})</h3>
       <div class="table-wrap">
         <table class="small">
           <thead><tr><th>Trimestre</th><th class="num">Budget</th><th class="num">P10</th><th class="num">P50</th><th class="num">P90</th><th class="num">Réalisé</th><th class="num">Probabilité annoncée</th></tr></thead>
@@ -104,5 +113,6 @@
   .pit .col { display: grid; grid-template-rows: 1fr auto auto; height: 100%; text-align: center; }
   .pit .col i { align-self: end; background: var(--bar-hit); border-radius: 3px 3px 0 0; }
   ul { margin: 0; padding-left: 18px; }
+  .na { max-width: 760px; }
   @media (max-width: 520px) { .bt { grid-template-columns: 1fr; } }
 </style>

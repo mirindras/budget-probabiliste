@@ -1,18 +1,37 @@
 import { describe, expect, test } from 'vitest';
-import { alfaScenario } from '../../src/engine/alfa.ts';
-import { EVENT_GUIDE, frequencyToProbability, fullReview, HYP_GUIDE, RISK_CATEGORIES } from '../../src/engine/guide.ts';
-import { readiness } from '../../src/engine/readiness.ts';
+import { alfaBudget, alfaScenario } from '../../src/engine/alfa.ts';
+import { newEvent, newHypothesis } from '../../src/engine/edit.ts';
+import { eventGuide, EVENT_GUIDE, frequencyToProbability, fullReview, hypGuide, HYP_GUIDE, RISK_CATEGORIES, suggestRefs } from '../../src/engine/guide.ts';
+import { readiness, uncoveredPostes } from '../../src/engine/readiness.ts';
 import { checkScenarioShape } from '../../src/engine/schema.ts';
-import { EVENT_CODES, HYP_CODES } from '../../src/engine/types.ts';
+import { starterScenario } from '../../src/engine/starter.ts';
+import { HYP_EFFECTS } from '../../src/engine/types.ts';
+import { betaBudget } from '../fixtures.ts';
 
 const ALFA = { budgetImporte: false, reconciliationOk: true };
 const findings = (s: ReturnType<typeof alfaScenario>, code: string, opts = ALFA) => readiness(s, opts).items.find((i) => i.code === code)!;
 
 describe('guide de saisie', () => {
   test('une question, un répondant, des sources et un piège pour chaque entrée', () => {
-    for (const c of HYP_CODES) for (const k of ['question', 'qui', 'sources', 'piege'] as const) expect(HYP_GUIDE[c][k].length).toBeGreaterThan(k === 'qui' ? 1 : 10);
-    for (const c of EVENT_CODES) for (const k of ['question', 'qui', 'sources', 'piege'] as const) expect(EVENT_GUIDE[c][k].length).toBeGreaterThan(k === 'qui' ? 1 : 10);
+    const s = alfaScenario();
+    const KEYS = ['question', 'qui', 'sources', 'piege'] as const;
+    // ALFA : les questions écrites pour l'exemple ; toute entrée a la sienne.
+    for (const h of s.registre.hypotheses) for (const k of KEYS) expect(HYP_GUIDE[h.code][k].length).toBeGreaterThan(k === 'qui' ? 1 : 10);
+    for (const e of s.registre.evenements) for (const k of KEYS) expect(EVENT_GUIDE[e.code][k].length).toBeGreaterThan(k === 'qui' ? 1 : 10);
+    expect(hypGuide(s.registre.hypotheses[0], alfaBudget(), true)).toBe(HYP_GUIDE.H01);
+    // Une autre entreprise : la question se déduit de l'effet et de la portée, avec les noms de son budget.
+    const b = betaBudget();
+    const t = starterScenario(b);
+    for (const effet of HYP_EFFECTS.filter((x) => x !== 'change')) {
+      const g = hypGuide(newHypothesis(t, b, effet), b);
+      for (const k of KEYS) expect(g[k].length).toBeGreaterThan(5);
+    }
+    expect(hypGuide(t.registre.hypotheses[0], b).question).toMatch(/BU Conseil/);
+    expect(eventGuide(newEvent(t, b, 'volume', 'Perte du client Gamma'), b).question).toMatch(/Perte du client Gamma.*baisseraient les volumes/);
     expect(new Set(RISK_CATEGORIES.map((c) => c.code)).size).toBe(16);
+    // Revue des risques : les entrées du registre qui couvrent chaque famille sont proposées.
+    expect(suggestRefs(RISK_CATEGORIES.find((c) => c.code === 'R04')!, s.registre)).toEqual(['H06']);
+    expect(suggestRefs(RISK_CATEGORIES.find((c) => c.code === 'R01')!, t.registre)).toEqual(['H01', 'H02']);
   });
   test('fréquence observée : estimation prudente, jamais 0 ni 100 %', () => {
     expect(frequencyToProbability(2, 5)).toBeCloseTo(3 / 7, 12);
@@ -38,6 +57,35 @@ describe('état de préparation des entrées', () => {
     expect(r.bloquants).toBe(0);
     expect(readiness(alfaScenario(), { budgetImporte: true, reconciliationOk: true }).prets).toBe(r.total);
     expect(checkScenarioShape(alfaScenario())).toEqual([]);
+  });
+  test('postes couverts : chaque poste varie avec une hypothèse, ou est confirmé certain', () => {
+    const s = alfaScenario();
+    const withBudget = { ...ALFA, budget: alfaBudget() };
+    const r = readiness(s, withBudget);
+    expect(r.total).toBe(1 + 12 + 1 + 3 + 1 + 16);
+    expect(r.items.find((i) => i.code === 'POSTES')!.statut).toBe('pret');
+    expect(uncoveredPostes(s, alfaBudget())).toEqual([]);
+    // Sans la confirmation, les autres frais de transport restent au budget sans incertitude : signalé.
+    s.registre.postes_certains = [];
+    expect(uncoveredPostes(s, alfaBudget())).toEqual(['AUTRES_TRANSPORT']);
+    expect(readiness(s, withBudget).items.find((i) => i.code === 'POSTES')!.constats[0].texte).toMatch(/Autres frais de transport/);
+  });
+  test('références : une portée qui nomme une BU absente bloque l\'hypothèse concernée', () => {
+    const s = alfaScenario();
+    s.registre.hypotheses[0].portee = { bu: ['Boulangerie'] };
+    const f = findings(s, 'H01', { ...ALFA, budget: alfaBudget() } as never);
+    expect(f.statut).toBe('bloquant');
+    expect(f.constats[0].texte).toBe('BU « Boulangerie » inconnue.');
+  });
+  test('budget importé : registre de départ en brouillon, à compléter, rien de bloquant', () => {
+    const b = betaBudget();
+    const s = starterScenario(b);
+    const r = readiness(s, { budgetImporte: true, reconciliationOk: true, budget: b });
+    expect(r.bloquants).toBe(0);
+    expect(r.items.filter((i) => i.etape === 'hypotheses' && i.statut === 'a-revoir').length).toBe(s.registre.hypotheses.length + 1);
+    expect(r.items.find((i) => i.code === 'H01')!.constats.map((x) => x.texte).join()).toMatch(/Propriétaire à désigner.*Fourchette par défaut/);
+    // Les subventions, seul produit sans hypothèse, restent au budget : signalées.
+    expect(uncoveredPostes(s, b)).toEqual(['SUBV']);
   });
   test('gouvernance : propriétaire, justification, validation', () => {
     const s = alfaScenario();

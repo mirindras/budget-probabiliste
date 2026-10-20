@@ -1,6 +1,14 @@
 import { expect, test, type Page } from '@playwright/test';
 import * as XLSX from 'xlsx';
-import { budgetTemplate } from '../../src/io/excel.ts';
+import { alfaBudget } from '../../src/engine/alfa.ts';
+import { budgetTemplate, legacyBudgetTemplate } from '../../src/io/excel.ts';
+import { betaBudget } from '../fixtures.ts';
+
+const xlsx = (wb: XLSX.WorkBook) => ({
+  name: 'BUDGET_BASE.xlsx',
+  mimeType: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+  buffer: Buffer.from(XLSX.write(wb, { type: 'array', bookType: 'xlsx' }) as ArrayBuffer),
+});
 
 test.skip(({ isMobile }) => isMobile, 'parcours sur ordinateur');
 
@@ -77,7 +85,7 @@ test('saisie guidée : question, lecture en clair, contrôles et revue des risqu
   await ready(page);
   await page.getByTestId('saisie-guidee').click();
   const box = page.getByTestId('assistant');
-  await expect(page.getByTestId('assistant-progression')).toContainText('32 sur 33 prêts');
+  await expect(page.getByTestId('assistant-progression')).toContainText('33 sur 34 prêts');
   await page.getByTestId('guide-H01').click();
   await expect(box).toContainText('Directeur commercial de la BU');
   await page.getByTestId('p10-H01').fill('-8');
@@ -87,7 +95,7 @@ test('saisie guidée : question, lecture en clair, contrôles et revue des risqu
   await page.getByTestId('just-H01').press('Tab');
   await expect(page.getByTestId('guide-H01')).toContainText('à revoir');
   await expect(box).toContainText('Justification trop courte');
-  await expect(page.getByTestId('assistant-progression')).toContainText('31 sur 33 prêts');
+  await expect(page.getByTestId('assistant-progression')).toContainText('32 sur 34 prêts');
   await page.getByRole('button', { name: /Revue des risques/ }).click();
   await page.getByTestId('decision-R14').selectOption('');
   await expect(page.getByTestId('revue-R14')).toContainText('Pas encore passé en revue');
@@ -124,27 +132,67 @@ test('un lien de partage altéré est refusé avec un message, et ALFA est calcu
 test('TC18 : un modèle à 3 erreurs donne 3 messages localisés et aucun calcul', async ({ page }) => {
   await ready(page);
   const before = await page.getByTestId('run-ref').textContent();
-  const wb = budgetTemplate();
-  wb.Sheets.VENTES.E5 = { t: 'n', v: -120 };
-  wb.Sheets.VENTES.F9 = { t: 'n', v: 0 };
-  wb.Sheets.CHARGES.B3 = { t: 's', v: 'loyers' };
-  const buffer = Buffer.from(XLSX.write(wb, { type: 'array', bookType: 'xlsx' }) as ArrayBuffer);
-  await page.getByTestId('file-input').setInputFiles({ name: 'BUDGET_BASE.xlsx', mimeType: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet', buffer });
+  const wb = budgetTemplate(alfaBudget());
+  wb.Sheets.POSTES.C3 = { t: 's', v: 'XX' };
+  wb.Sheets.POSTES.I6 = { t: 's', v: 'beaucoup' };
+  wb.Sheets.POSTES.F8 = { t: 'n', v: 1.5 };
+  await page.getByTestId('file-input').setInputFiles(xlsx(wb));
   const box = page.getByTestId('import-errors');
   await expect(box).toContainText('3 erreurs');
   await expect(box.locator('li')).toHaveCount(3);
+  await expect(box).toContainText('POSTES, ligne 3 : rubrique « XX »');
+  await expect(box).toContainText('POSTES, ligne 6 : montant manquant ou non numérique : mars');
+  await expect(box).toContainText('POSTES, ligne 8 : part_devises');
+  await expect(page.getByTestId('run-ref')).toHaveText(before!);
+  // L'ancien format détaillé d'un distributeur reste lu, avec ses propres contrôles.
+  const old = legacyBudgetTemplate();
+  old.Sheets.VENTES.E5 = { t: 'n', v: -120 };
+  old.Sheets.VENTES.F9 = { t: 'n', v: 0 };
+  old.Sheets.CHARGES.B3 = { t: 's', v: 'loyers' };
+  await page.getByTestId('file-input').setInputFiles(xlsx(old));
+  await expect(box.locator('li')).toHaveCount(3);
   await expect(box).toContainText('VENTES, ligne 5');
-  await expect(box).toContainText('VENTES, ligne 9');
   await expect(box).toContainText('CHARGES, ligne 3');
   await expect(page.getByTestId('run-ref')).toHaveText(before!);
 });
 
+test('une autre entreprise : budget importé, registre de départ, hypothèses ajoutées et retirées', async ({ page }) => {
+  await ready(page);
+  await page.getByTestId('file-input').setInputFiles(xlsx(budgetTemplate(betaBudget())));
+  await expect(page.locator('header.banner h1')).toContainText('BETA Conseil');
+  await expect(page.getByRole('status').filter({ hasText: 'Registre de départ créé' })).toBeVisible();
+  await expect(page.locator('h2.headline')).toContainText(/1\s322,0\sk€/);
+  await expect(page.getByRole('complementary', { name: 'Hypothèses' })).toContainText('Volume Conseil');
+  await page.getByTestId('saisie-guidee').click();
+  const box = page.getByTestId('assistant');
+  await expect(page.getByTestId('postes-non-couverts')).toContainText('Subventions de formation');
+  await page.getByTestId('ajout-libelle').fill('Subventions');
+  await page.getByTestId('ajouter-hypothese').click();
+  await expect(page.getByTestId('lib-H07')).toHaveValue('Subventions');
+  await expect(page.getByTestId('postes-non-couverts')).toContainText('Chaque poste varie');
+  await page.getByTestId('guide-H03').click();
+  await page.getByTestId('retirer-H03').click();
+  await page.getByTestId('confirmer-retrait-H03').click();
+  await expect(page.getByTestId('guide-H03')).toHaveCount(0);
+  await page.getByTestId('fermer-assistant').click();
+  const hyps = page.getByRole('complementary', { name: 'Hypothèses' });
+  await expect(hyps).toContainText('Subventions');
+  await expect(hyps).not.toContainText('Prix de vente');
+  await expect(page.getByTestId('run-ref')).not.toContainText('analyses en cours', { timeout: 20_000 });
+  await expect(page.getByTestId('probabilite').locator('.value')).toHaveText(/\d+\s%/);
+  // Leviers propres à l'entreprise : créés dans l'onglet Registre, aussitôt simulables.
+  await page.getByRole('tab', { name: 'Registre' }).click();
+  await page.getByTestId('ajouter-levier').click();
+  await expect(page.getByTestId('levier-L1')).toContainText('Règle : Frais de personnel −26,44 k€ en année pleine, dès avril');
+  await page.getByTestId('case-L1').check();
+  await expect(page.getByTestId('probabilite')).toContainText('avec L1');
+});
+
 test('UC10 : un budget importé conforme est calculé localement et ne part jamais dans un lien', async ({ page }) => {
   await ready(page);
-  const wb = budgetTemplate();
+  const wb = budgetTemplate(alfaBudget());
   wb.Sheets.PARAMETRES.B2 = { t: 's', v: 'Société test, budget 2027' };
-  const buffer = Buffer.from(XLSX.write(wb, { type: 'array', bookType: 'xlsx' }) as ArrayBuffer);
-  await page.getByTestId('file-input').setInputFiles({ name: 'BUDGET_BASE.xlsx', mimeType: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet', buffer });
+  await page.getByTestId('file-input').setInputFiles(xlsx(wb));
   await expect(page.locator('header.banner h1')).toContainText('Société test');
   await expect(page.getByTestId('probabilite')).toContainText('30');
   const download = page.waitForEvent('download');

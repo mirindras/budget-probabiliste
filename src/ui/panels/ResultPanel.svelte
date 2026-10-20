@@ -1,6 +1,6 @@
 <script lang="ts">
   import Histogram from '../charts/Histogram.svelte';
-  import { chances, gar, num, pct, pts, signed } from '../format.ts';
+  import { amount, chances, material, pct, pts, signed } from '../format.ts';
   import { app } from '../state.svelte.ts';
 
   const r = $derived(app.result);
@@ -13,8 +13,9 @@
     if (!r) return '';
     const b = r.base;
     const gap = budget - b.p50;
-    const where = gap > 0.05 ? `le résultat médian attendu est ${num(gap)} GAr sous le budget` : gap < -0.05 ? `le résultat médian attendu est ${num(-gap)} GAr au-dessus du budget` : 'le résultat médian attendu est au niveau du budget';
-    return `Le budget de ${num(budget)} GAr a ${pct(b.prob)} de chances d'être atteint : ${where}.`;
+    const tol = material(budget);
+    const where = gap > tol ? `le résultat médian attendu est ${amount(gap)} sous le budget` : gap < -tol ? `le résultat médian attendu est ${amount(-gap)} au-dessus du budget` : 'le résultat médian attendu est au niveau du budget';
+    return `Le budget de ${amount(budget)} a ${pct(b.prob)} de chances d'être atteint : ${where}.`;
   });
   const selLabel = $derived(sel ? sel.codes.join(' + ') : '');
 </script>
@@ -33,30 +34,30 @@
       </div>
       <div class="kpi">
         <span class="label tip" title="P10 : 1 chance sur 10 de faire moins">Année défavorable</span>
-        <span class="value">{gar(shown!.p10)}</span>
+        <span class="value">{amount(shown!.p10)}</span>
         <span class="sub">1 chance sur 10 de faire moins</span>
         {#if sel}<span class="small" class:pos={sel.stats.p10 > r.base.p10} class:neg={sel.stats.p10 < r.base.p10}>{signed(sel.stats.p10 - r.base.p10, 2)}</span>{/if}
       </div>
       <div class="kpi">
         <span class="label tip" title="P50 : médiane des itérations">Résultat médian</span>
-        <span class="value">{gar(shown!.p50)}</span>
+        <span class="value">{amount(shown!.p50)}</span>
         <span class="sub">1 chance sur 2</span>
         {#if sel}<span class="small" class:pos={sel.stats.p50 > r.base.p50} class:neg={sel.stats.p50 < r.base.p50}>{signed(sel.stats.p50 - r.base.p50, 2)}</span>{/if}
       </div>
       <div class="kpi">
         <span class="label tip" title="P90 : 1 chance sur 10 de faire mieux">Année favorable</span>
-        <span class="value">{gar(shown!.p90)}</span>
+        <span class="value">{amount(shown!.p90)}</span>
         <span class="sub">1 chance sur 10 de faire mieux</span>
       </div>
       <div class="kpi">
         <span class="label tip" title="EBITDA-at-Risk 90 = P50 − P10 : ce qu'une année défavorable à 1 chance sur 10 coûte par rapport au médian">Risque (EaR 90)</span>
-        <span class="value">{gar(shown!.ear)}</span>
+        <span class="value">{amount(shown!.ear)}</span>
         <span class="sub">perdus sur le médian en année défavorable</span>
         {#if sel}<span class="small" class:pos={sel.stats.ear < r.base.ear} class:neg={sel.stats.ear > r.base.ear}>{signed(sel.stats.ear - r.base.ear, 2)}</span>{/if}
       </div>
       <div class="kpi">
         <span class="label tip" title="CVaR 10 : moyenne des 10 % d'itérations les plus basses">10 % pires cas</span>
-        <span class="value">{gar(shown!.cvar10)}</span>
+        <span class="value">{amount(shown!.cvar10)}</span>
         <span class="sub">en moyenne (CVaR 10)</span>
       </div>
     </div>

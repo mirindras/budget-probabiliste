@@ -1,7 +1,9 @@
 <script lang="ts">
   import Histogram from './charts/Histogram.svelte';
   import { RISK_CATEGORIES } from '../engine/guide.ts';
-  import { gar, num, pct, pct5, pts } from './format.ts';
+  import { familyCode } from '../engine/risk.ts';
+  import { amount, num, pct, pct5, pts } from './format.ts';
+  import { arbitrage } from './options.ts';
   import { app } from './state.svelte.ts';
 
   /** Note CODIR d'une page (section 13.1) : message clé, Q1 à Q4, distribution, décision, limites. */
@@ -11,11 +13,19 @@
   const labels = $derived(Object.fromEntries([...app.scenario.registre.hypotheses, ...app.scenario.registre.evenements].map((h) => [h.code, h.libelle])));
   const levers = $derived(r ? r.cases.filter((c) => c.type === 'levier' && !c.refus).sort((a, b) => b.dProb - a.dProb) : []);
   const best = $derived(levers.filter((c) => c.dProb > 0.005));
-  const pkgA = $derived(r?.cases.find((c) => c.code === 'A'));
-  const pkgB = $derived(r?.cases.find((c) => c.code === 'B'));
-  const hedge = $derived(r?.cases.find((c) => c.code === 'L1'));
+  const options = $derived(r ? arbitrage(r.cases, app.scenario.paquets) : []);
+  /** Paquet mis en avant : le plus probable des paquets de leviers. */
+  const pkgA = $derived(options[0]?.c ?? (r ? r.cases.filter((c) => c.type === 'paquet' && !c.refus).sort((a, b) => b.stats.prob - a.stats.prob)[0] : undefined));
+  const hedgeCode = $derived(app.scenario.leviers.find((l) => l.type === 'couverture')?.code);
+  const hedge = $derived(hedgeCode ? r?.cases.find((c) => c.code === hedgeCode) : undefined);
   const topBlock = $derived(r ? [...r.contributions.blocks].sort((a, b) => b.part - a.part)[0] : null);
-  const topCommercial = $derived(r?.contributions.items.find((i) => ['H01', 'H02', 'H03', 'H04', 'H05', 'H11', 'E02'].includes(i.code)));
+  const drivers = $derived([...app.scenario.registre.hypotheses, ...app.scenario.registre.evenements]);
+  const topCommercial = $derived(r?.contributions.items.find((i) => drivers.find((d) => d.code === i.code)?.famille === 'Commercial'));
+  /** Le bloc en tête contient-il le change ? */
+  const fxFamily = $derived.by(() => {
+    const h = app.scenario.registre.hypotheses.find((x) => x.effet === 'change');
+    return h ? familyCode(h.famille) : null;
+  });
   const bt = $derived(app.backtest);
   /** Revue des risques : ceux qui restent hors modèle sont nommés, ceux qui n'ont pas été revus aussi. */
   const revue = $derived(app.scenario.registre.revue_risques ?? []);
@@ -31,20 +41,20 @@
       <p>Budget probabiliste : chances de tenir l'EBITDA budgété, risque, leviers.</p>
     </header>
     <p class="key">
-      <strong>Message clé : l'EBITDA budgété de {num(budget)} GAr a {pct5(r.base.prob)} de chances d'être atteint.
-      {#if pkgA && pkgA.dProb > 0.01}
-        {best.slice(0, 2).map((c) => c.libelle.toLowerCase()).join(' et ').replace(/^./, (c) => c.toUpperCase())} {best.length > 1 ? 'portent' : 'porte'} cette probabilité à {pct5(pkgA.stats.prob)} pour {num(pkgA.cout ?? 0, 2)} GAr de coût direct.
+      <strong>Message clé : l'EBITDA budgété de {amount(budget)} a {pct5(r.base.prob)} de chances d'être atteint.
+      {#if pkgA && pkgA.dProb > 0.01 && best.length}
+        {best.slice(0, 2).map((c) => c.libelle.toLowerCase()).join(' et ').replace(/^./, (c) => c.toUpperCase())} {best.length > 1 ? 'portent' : 'porte'} cette probabilité à {pct5(pkgA.stats.prob)} pour {amount(pkgA.cout ?? 0, 2)} de coût direct.
       {/if}</strong>
     </p>
     <ul>
-      <li><b>Q1, probabilité :</b> {pct5(r.base.prob)}. Le résultat médian attendu est de {gar(r.base.p50)}, {num(Math.abs(budget - r.base.p50))} GAr {r.base.p50 < budget ? 'sous' : 'au-dessus du'} budget.</li>
-      <li><b>Q2, risque :</b> une année défavorable à 1 chance sur 10 donne {gar(r.base.p10)}. Dans les 10 % pires cas, l'EBITDA moyen tombe à {gar(r.base.cvar10)}.</li>
+      <li><b>Q1, probabilité :</b> {pct5(r.base.prob)}. Le résultat médian attendu est de {amount(r.base.p50)}, {amount(Math.abs(budget - r.base.p50))} {r.base.p50 < budget ? 'sous le' : 'au-dessus du'} budget.</li>
+      <li><b>Q2, risque :</b> une année défavorable à 1 chance sur 10 donne {amount(r.base.p10)}. Dans les 10 % pires cas, l'EBITDA moyen tombe à {amount(r.base.cvar10)}.</li>
       <li><b>Q3, origine :</b>
-        {#if topBlock}le bloc {topBlock.libelle.toLowerCase()} concentre {pct(topBlock.part)} des contributions relatives au risque (corrélations de rang, résultat du modèle){#if topBlock.code === 'macro'}{' : '}le change et ce qu'il entraîne (prix locaux, carburant, frais généraux){/if}.{/if}
+        {#if topBlock}le bloc {topBlock.libelle.toLowerCase()} concentre {pct(topBlock.part)} des contributions relatives au risque (corrélations de rang, résultat du modèle){#if topBlock.code === fxFamily}{' : '}le change et ce qu'il entraîne{app.isAlfa ? ' (prix locaux, carburant, frais généraux)' : ''}{/if}.{/if}
         {#if topCommercial}{labels[topCommercial.code]} est le premier risque commercial.{/if}
       </li>
       <li><b>Q4, leviers :</b>
-        {best.slice(0, 2).map((c) => `${c.libelle.toLowerCase()}, ${ptsInt(c.dProb)}`).join(' ; ')}.
+        {best.length ? `${best.slice(0, 2).map((c) => `${c.libelle.toLowerCase()}, ${ptsInt(c.dProb)}`).join(' ; ')}.` : 'aucun levier n\'améliore sensiblement la probabilité.'}
         {#if hedge && hedge.dEaR < -0.01}La couverture de change réduit le risque de {num((-hedge.dEaR / r.base.ear) * 100, 0)} % mais {hedge.dProb < 0 ? `retire ${num(-hedge.dProb * 100, 0)} points de probabilité` : `ajoute ${num(hedge.dProb * 100, 0)} points`}.{/if}
       </li>
     </ul>
@@ -53,7 +63,7 @@
       <Histogram base={r.annual} budget={budget} height={210} print />
     </div>
     <p><b>Décision attendue :</b>
-      {#if pkgA && pkgB}valider le paquet A (probabilité {pct5(pkgA.stats.prob)}), ou le paquet B si le CODIR privilégie la protection du bas de fourchette (P10 à {gar(pkgB.stats.p10)} au lieu de {num(pkgA.stats.p10)}). Le choix dépend de ce que le CODIR redoute le plus : rater le budget, ou subir une mauvaise année.{/if}
+      {#if options.length === 2}valider le paquet {options[0].c.code} (probabilité {pct5(options[0].c.stats.prob)}), ou le paquet {options[1].c.code} si le CODIR privilégie la protection du bas de fourchette (P10 à {amount(options[1].c.stats.p10)} au lieu de {num(options[0].c.stats.p10)}). Le choix dépend de ce que le CODIR redoute le plus : rater le budget, ou subir une mauvaise année.{:else if pkgA}valider le paquet {pkgA.code} (probabilité {pct5(pkgA.stats.prob)}).{:else if best.length}retenir {best[0].libelle.toLowerCase()} (probabilité {pct5(best[0].stats.prob)}).{:else}aucune action ne change sensiblement la probabilité : le budget est à revoir, ou à assumer tel quel.{/if}
     </p>
     {#if bt}<p class="small">{bt.synthese}</p>{/if}
     <footer>

@@ -12,16 +12,16 @@ FP&A probabiliste : budget, atterrissage, risque, backtest et arbitrages, sur un
 ![Données](https://img.shields.io/badge/données-synthétiques-5E6B7E)
 ![Langue](https://img.shields.io/badge/langue-français-5E6B7E)
 
-![Vitest](https://img.shields.io/badge/Vitest-114_tests-2B6E4A)
-![Playwright](https://img.shields.io/badge/Playwright-18_parcours-2B6E4A)
-![Couverture](https://img.shields.io/badge/couverture-96_%25-2B6E4A)
+![Vitest](https://img.shields.io/badge/Vitest-150_tests-2B6E4A)
+![Playwright](https://img.shields.io/badge/Playwright-19_parcours-2B6E4A)
+![Couverture](https://img.shields.io/badge/couverture-94_%25-2B6E4A)
 ![TypeScript](https://img.shields.io/badge/TypeScript-5-1769AA?logo=typescript&logoColor=white)
 ![Svelte](https://img.shields.io/badge/Svelte-5-B87333?logo=svelte&logoColor=white)
 ![Vite](https://img.shields.io/badge/Vite-7-5E6B7E?logo=vite&logoColor=white)
 
 Outil web pour directions financières : il mesure la probabilité d'atteindre l'EBITDA budgété, ce qu'une mauvaise année coûterait, d'où vient le risque et quelles actions le réduisent.
 
-Rien à installer, aucun compte, aucune donnée envoyée : le calcul se fait dans le navigateur. La démonstration porte sur ALFA Distribution, un distributeur fictif à Madagascar ; toutes ses données sont synthétiques.
+Rien à installer, aucun compte, aucune donnée envoyée : le calcul se fait dans le navigateur. La démonstration porte sur ALFA Distribution, un distributeur fictif à Madagascar ; toutes ses données sont synthétiques. ALFA n'est qu'un exemple prérempli : chaque entreprise décrit son propre compte de résultat, ses BU, ses hypothèses et ses événements (voir [Pour votre entreprise](#pour-votre-entreprise)).
 
 ![Synthèse CODIR : le budget a 30 % de chances d'être atteint](docs/images/synthese-codir.png)
 
@@ -96,7 +96,7 @@ Chaque action est testée sur exactement les mêmes 10 000 années que le budget
 **Synthèse CODIR**, la vue par défaut, pour le CFO et le CODIR :
 
 - la réponse en une phrase et une jauge (« Le budget a 30 % de chances d'être atteint ») ;
-- quatre chiffres clés en GAr : résultat médian, année défavorable, année favorable, objectif à 80 % de chances ;
+- quatre chiffres clés dans l'unité du budget (GAr pour ALFA) : résultat médian, année défavorable, année favorable, objectif à 80 % de chances ;
 - le pourquoi : la contribution relative de chaque famille au risque, et les hypothèses qui pèsent le plus, expliquées en clair ;
 - les décisions sur la table : chaque action avec son effet sur les chances, sur l'année défavorable et son coût, puis les options A et B à arbitrer ;
 - les « et si » : ce que deviendraient les chances après une dépréciation brutale de l'ariary, la perte de deux grands comptes ou un choc carburant.
@@ -112,7 +112,7 @@ Chaque action est testée sur exactement les mêmes 10 000 années que le budget
 | ![Origine du risque : contributions, effet isolé, événements](docs/images/origine-du-risque.png) | ![Trajectoire mensuelle avec 6 mois clos au réel](docs/images/trajectoire.png) |
 | Contribution relative de chaque hypothèse, effet d'une action ciblée, écart entre les années avec et sans chaque événement. | Les mois clos sont figés au réel ; la probabilité est recalculée à chaque clôture. |
 
-**Saisie guidée**, pour préparer les entrées sans rien oublier : chaque hypothèse et chaque événement avec la question à poser à son propriétaire, qui répond, où chercher et le piège à éviter ; une saisie en écart au budget relue en clair ; des contrôles en direct (fourchette incohérente, trop étroite, décentrée, justification manquante) ; une aide pour passer d'une fréquence observée à une probabilité ; et une revue de seize familles de risques, dont celles que le modèle ne couvre pas, nommées dans la note CODIR.
+**Saisie guidée**, pour préparer les entrées sans rien oublier : chaque hypothèse et chaque événement avec ce qu'il fait varier, la question à poser à son propriétaire, qui répond, où chercher et le piège à éviter ; l'ajout et le retrait d'hypothèses et d'événements ; les postes du budget qu'aucune hypothèse ne fait varier ; une saisie en écart au budget relue en clair ; des contrôles en direct (fourchette incohérente, trop étroite, décentrée, justification manquante) ; une aide pour passer d'une fréquence observée à une probabilité ; et une revue de seize familles de risques, dont celles que le modèle ne couvre pas, nommées dans la note CODIR.
 
 <p align="center"><img src="docs/images/saisie-guidee.png" alt="Saisie guidée : question au propriétaire, fourchette relue en clair, contrôles" width="760"></p>
 
@@ -121,6 +121,25 @@ Chaque action est testée sur exactement les mêmes 10 000 années que le budget
 <p align="center"><img src="docs/images/note-codir.png" alt="Note CODIR d'une page, lisible en niveaux de gris" width="640"></p>
 
 Guide d'une page : [docs/guide-utilisateur.md](docs/guide-utilisateur.md). Formats d'import et d'export : [docs/dictionnaire-donnees.md](docs/dictionnaire-donnees.md).
+
+## Pour votre entreprise
+
+Le moteur ne connaît ni ALFA ni la distribution : il lit la structure du compte de résultat dans le budget, et ce qui le fait varier dans le registre. Une société de services, un industriel ou un réseau d'agences y décrivent leurs propres lignes.
+
+**1. Le budget de base.** Le modèle `BUDGET_BASE.xlsx` tient en trois feuilles : `PARAMETRES` (unité des montants, k€, M€ ou GAr, EBITDA publié, et la devise avec son cours budget si des achats sont payés en devises), `RUBRIQUES` (les lignes du P&L jusqu'à l'EBITDA, chacune chiffre d'affaires, autre produit ou charge) et `POSTES` (une ligne par poste : sa rubrique, sa BU ou aucune pour un poste commun, son assiette fixe, volume ou chiffre d'affaires, sa part en devises, ses douze montants). L'outil recalcule l'EBITDA et refuse le fichier s'il ne retrouve pas l'EBITDA publié ; chaque erreur est localisée à la feuille et à la ligne.
+
+**2. Un registre de départ.** À l'import, si le registre en cours ne correspond pas au budget, l'outil en propose un : une hypothèse de volume par BU, une de prix, une par rubrique de charges, le change s'il y a des postes en devises, une baisse d'activité et un choc de change en stress tests. Tout part en brouillon, propriétaire à désigner : la note CODIR reste bloquée tant que les responsables n'ont pas donné et validé leurs fourchettes.
+
+**3. Ajouter, modifier, retirer.** Dans la saisie guidée, chaque hypothèse dit ce qui varie (volume, prix de vente, montant d'un poste, cours de change, points de marge) et sur quoi (des BU, une rubrique entière ou des postes choisis). Un événement touche les volumes ou un montant, à la baisse ou à la hausse, jusqu'à la fin de l'exercice ou le seul mois de survenance, avec un surcoût ponctuel si besoin. Retirer une entrée retire aussi ses corrélations et les leviers qui la visaient. Les postes qu'aucune hypothèse ne fait varier sont listés : on les couvre, ou on les confirme certains.
+
+**4. Les décisions possibles.** Dans l'onglet Registre, chaque levier se crée par son type (couverture de change, hausse de prix, économie sur une rubrique, plafond sur une hypothèse, atténuation d'un événement) et chaque stress test par le sien (choc de change, événement forcé, hausse de postes, baisse des volumes), avec ses paramètres, sa portée et son mois d'effet ; les paquets se composent en cochant leurs actions.
+
+Le même travail se fait dans Excel : dans `REGISTRE_HYPOTHESES.xlsx`, ajouter une ligne ajoute une hypothèse, la supprimer la retire ; la colonne `porte_sur` désigne les BU, la rubrique ou les postes, dont la feuille `REFERENTIEL` donne la liste. Les fichiers, liens et brouillons de la version précédente se relisent sans perte, de même que l'ancien modèle détaillé d'un distributeur (ventes par canal et par famille).
+
+| Le budget d'une autre entreprise | Une hypothèse et sa portée |
+| --- | --- |
+| ![Budget importé : rubriques, montants et hypothèses qui les font varier](docs/images/autre-entreprise-budget.png) | ![Saisie guidée : ce qui varie, sur quoi, et la question au propriétaire](docs/images/autre-entreprise-hypothese.png) |
+| Chaque rubrique avec son montant et les hypothèses qui la font varier ; les subventions, que rien ne fait varier, sont signalées. | Ce qui varie, sur quoi, la question au propriétaire et sa fourchette, relue en clair. |
 
 ## Ce que le modèle a appris sur l'exemple
 
@@ -182,6 +201,12 @@ src/
     controls.ts        contrôles C01 à C12 (M9)
     guide.ts           questions de saisie, familles de risques à revoir
     readiness.ts       état de préparation des entrées (saisie guidée)
+    model.ts           structure du P&L compilée pour le calcul : rubriques, postes, portées
+    references.ts      cohérence du budget et des portées du registre
+    portee.ts          portée en texte (Excel) et en clair (interface)
+    starter.ts         registre de départ d'un budget importé
+    edit.ts            ajout et retrait d'hypothèses, d'événements, de leviers, de stress tests
+    legacy.ts          relecture des formats de la version 1 (grille de distributeur, codes fixes)
     schema.ts          validation de structure d'un scénario venu de l'extérieur
     simulate.ts        orchestration d'un run, référence de run
     alfa.ts, types.ts  jeu ALFA préchargé, modèle de données
@@ -190,8 +215,8 @@ src/
   io/                  excel.ts (SheetJS), share.ts (lz-string), storage.ts (IndexedDB), limits.ts (bornes des entrées)
   ui/                  vues Synthèse CODIR et Analyse détaillée, graphiques SVG, note imprimable (M10)
 data/alfa/             budget.json, registre.json : ALFA préchargée
-templates/             BUDGET_BASE.xlsx, REGISTRE_HYPOTHESES.xlsx
-tests/                 engine et io (Vitest), e2e (Playwright)
+templates/             BUDGET_BASE.xlsx, BUDGET_BASE_DETAILLE.xlsx, REGISTRE_HYPOTHESES.xlsx
+tests/                 engine et io (Vitest), e2e (Playwright), fixtures.ts (une autre entreprise, BETA Conseil)
 reference/             prototype Python et valeurs attendues (annexe F)
 docs/                  SFD, guide utilisateur, dictionnaire des données, design
 ```
@@ -232,10 +257,11 @@ Douze contrôles s'exécutent à chaque run (réconciliation avec le budget, coh
 | TC17 lien de partage (moteur), TC18 import à 3 erreurs (moteur) | `tests/io/excel.test.ts` | automatisé |
 | TC15 performance, TC17 lien ouvert dans un autre navigateur, TC18 import dans l'écran, TC19 confidentialité, note sur une page, mobile, synthèse CODIR | `tests/e2e/*.spec.ts` | automatisé |
 | Saisie guidée : guide, contrôles de préparation, revue des risques | `tests/engine/readiness.test.ts`, `tests/e2e/outil.spec.ts` | automatisé |
-| Entrées externes : limites des fichiers et des liens, structure des scénarios | `tests/io/limits.test.ts`, `tests/engine/schema.test.ts`, `tests/e2e/outil.spec.ts` | automatisé |
+| Entrées externes : limites des fichiers et des liens, structure des scénarios et des budgets, compatibilité avec la version 1 | `tests/io/limits.test.ts`, `tests/engine/schema.test.ts`, `tests/e2e/outil.spec.ts` | automatisé |
+| Modèle configurable : une autre entreprise en k€, avec ou sans devise ; hypothèses, événements, leviers et stress tests ajoutés et retirés | `tests/engine/configurable.test.ts`, `tests/io/excel.test.ts`, `tests/e2e/outil.spec.ts` | automatisé |
 | TC20 prise en main par 3 testeurs non techniques | test utilisateur | à mener |
 
-Couverture du moteur et des entrées-sorties : 96 % des instructions, 99 % des lignes (exigence : 90 %). Chaque push vérifie la dépendance SheetJS (source, empreinte, version) puis repasse les types, les deux recettes et la construction ; `main` n'est publié que si tout est vert.
+Couverture du moteur et des entrées-sorties : 94 % des instructions, 99 % des lignes (exigence : 90 %). Chaque push vérifie la dépendance SheetJS (source, empreinte, version) puis repasse les types, les deux recettes et la construction ; `main` n'est publié que si tout est vert.
 
 ## Démarrage pour un développeur
 
@@ -254,7 +280,7 @@ Autres commandes :
 npm run test:coverage   # couverture du moteur et des entrées-sorties
 npm run test:e2e        # recette de l'interface (Playwright, construit puis sert l'outil)
 npm run check           # vérification des types (svelte-check)
-npm run templates       # régénère templates/BUDGET_BASE.xlsx et templates/REGISTRE_HYPOTHESES.xlsx
+npm run templates       # régénère les modèles Excel de templates/ à partir du jeu ALFA
 npm run reference       # prototype Python de référence (numpy, scipy)
 npm run build:artifact  # variante pour un cadre restreint (sans impression, téléchargement ni lien de partage)
 ```
@@ -267,7 +293,9 @@ Sur une machine où Playwright n'a pas téléchargé son navigateur, indiquez un
 
 Décisions prises là où la SFD laissait une marge ; chacune est tracée dans le code. Les spécifications complètes sont dans [docs/SFD.md](docs/SFD.md).
 
-- **Grain de calcul.** Toutes les hypothèses agissent au niveau BU ou total : le moteur calcule au grain BU × mois, ce qui donne exactement le même EBITDA que le grain mois × BU × canal × famille. Le modèle BUDGET_BASE.xlsx se saisit au grain fin (432 lignes pour ALFA) et l'import l'agrège.
+- **Modèle configurable.** Le moteur calcule au grain poste × mois : un volume agit sur le chiffre d'affaires de sa BU et sur les postes à assiette volume ou chiffre d'affaires, un prix sur le chiffre d'affaires, un facteur de poste sur les postes visés, le change sur la part en devises de chaque poste. ALFA n'est plus écrite dans le code : c'est une configuration parmi d'autres, et ses résultats sont identiques à ceux de la version précédente à 10⁻¹³ près.
+- **Grain de saisie.** Le modèle générique se saisit par poste et par mois. L'ancien modèle détaillé d'un distributeur (432 lignes mois × BU × canal × famille pour ALFA) reste accepté : l'import l'agrège au grain BU × mois, ce qui donne exactement le même EBITDA.
+- **Points de marge.** Un point de marge en plus améliore toujours l'EBITDA, que la rubrique d'arrivée soit un produit ou une charge ; de même, le coût d'un levier pèse toujours sur l'EBITDA.
 - **Stress S2.** « E02 forcé » remplace la perte de grand compte simulée par une perte de 12 % dès avril, comme dans le prototype de référence.
 - **Effet isolé d'un événement.** Événement appliqué à son amplitude moyenne, survenu en juillet, toutes les hypothèses à leur P50.
 - **Convergence.** Les erreurs-types sont estimées par lots (annexe E), sans le gain du LHS : l'estimation est prudente. N minimal retenu : 5 000. Le contrôle des corrélations (C03, écart ≤ 0,05) est calibré pour 10 000 itérations ; sous 6 000, il peut échouer par simple bruit d'échantillonnage.
@@ -284,7 +312,7 @@ Décisions prises là où la SFD laissait une marge ; chacune est tracée dans l
 
 ## Limites
 
-Le modèle mesure l'incertitude qu'on lui décrit, rien de plus : les risques absents du registre, les corrélations de crise et les chocs extrêmes relèvent des stress tests et d'une version 2. Données de démonstration : aucun chiffre ne décrit une entreprise réelle.
+Le modèle mesure l'incertitude qu'on lui décrit, rien de plus : les risques absents du registre, les corrélations de crise et les chocs extrêmes relèvent des stress tests et d'une version 2. Un budget porte une seule devise étrangère. Le backtest demande l'historique des budgets et des réalisés : il tourne sur le jeu ALFA ; pour un budget importé, le coefficient d'élargissement k se saisit au registre. Données de démonstration : aucun chiffre ne décrit une entreprise réelle.
 
 ## Feuille de route
 
@@ -299,6 +327,7 @@ Le modèle mesure l'incertitude qu'on lui décrit, rien de plus : les risques ab
 - [x] Atterrissage en cours d'année, backtest et calibration des fourchettes
 - [x] Import et export Excel, lien de partage, note CODIR d'une page, usage hors ligne
 - [x] Saisie guidée : question par entrée, contrôles de cohérence en direct, revue de seize familles de risques
+- [x] Modèle configurable : rubriques, postes, BU, hypothèses, événements, leviers et stress tests définis par l'entreprise ; ALFA devient un exemple prérempli
 - [x] Contrôles C01 à C12, concordance avec le prototype Python, 19 cas de recette sur 20 automatisés
 
 ### Prochaines étapes
@@ -312,7 +341,8 @@ Le modèle mesure l'incertitude qu'on lui décrit, rien de plus : les risques ab
 - [ ] Attribution du risque par effets de Shapley, adaptée aux hypothèses corrélées, en complément du classement par corrélations de rang
 - [ ] Corrélations de crise : un second régime où les hypothèses décrochent ensemble
 - [ ] Queues épaisses : chocs extrêmes plus fréquents que ne le prévoit le modèle actuel (copule de Student en option)
-- [ ] Plusieurs entités et consolidation, avec le change propre à chaque entité
+- [ ] Plusieurs entités et consolidation, avec plusieurs devises et le change propre à chaque entité
+- [ ] Backtest d'un budget importé, à partir de l'historique de ses budgets et réalisés
 - [ ] Import direct d'un export de grand livre, sans passer par les modèles Excel
 
 La V1 part de deux classeurs Excel. La cible est de brancher l'outil sur la chaîne de données de l'entreprise, Excel restant une porte d'entrée parmi d'autres :

@@ -4,16 +4,18 @@ import { checkMatrixRules } from './copula.ts';
 import { runControls, type ControlResult } from './controls.ts';
 import { hash } from './hash.ts';
 import { asymmetry, chooseLaw, validateHypothesis } from './laws.ts';
-import { buildEffects, leverMissingField, neutralEffects, PACKAGES } from './levers.ts';
-import { budgetMonthly, runPL } from './pl.ts';
+import { buildEffects, leverMissingField, neutralEffects, packageType } from './levers.ts';
+import { budgetMonthly, buildModel, driverCodes, type Model } from './model.ts';
+import { runPL } from './pl.ts';
+import { referenceErrors } from './references.ts';
 import {
   byBu, computeStats, contributions, eventEffects, fanChart, isolatedEffects, probAtLeast, quarterly, scenarioProfile, totalEffects,
   type BuStats, type Contribution, type Effect, type EventEffect, type FanPoint, type ProfileRow, type QuarterStats, type Stats,
 } from './risk.ts';
-import { drawAll, samplingContext, type Draws } from './sampling.ts';
+import { drawAll, type Draws } from './sampling.ts';
 import { checkScenarioShape } from './schema.ts';
 import { percentileSorted, sorted } from './stats.ts';
-import type { Actuals, BudgetGrid, CaseCode, LawKind, Scenario } from './types.ts';
+import type { Actuals, Budget, CaseCode, LawKind, Scenario } from './types.ts';
 
 export interface RunRef {
   outil: string;
@@ -76,7 +78,8 @@ export interface RunOutput {
   controls: ControlResult[];
   blocking: boolean;
   laws: LawInfo[];
-  fxStats: [number, number, number];
+  /** Cours moyen de l'année, P10 / P50 / P90 (null sans change). */
+  fxStats: [number, number, number] | null;
   timings: { simulation: number; total: number };
 }
 
@@ -85,10 +88,15 @@ export interface RunError {
   errors: string[];
 }
 
-export function validateScenario(s: Scenario): string[] {
+export function validateScenario(s: Scenario, budget?: Budget): string[] {
   // Structure d'abord : les règles métier ci-dessous supposent les champs présents et typés.
   const shape = checkScenarioShape(s);
   if (shape.length) return shape;
+  // Puis les références au budget : BU, postes et rubriques nommés par les portées doivent exister.
+  if (budget) {
+    const refs = referenceErrors(s, budget);
+    if (refs.length) return refs;
+  }
   const errors: string[] = [];
   for (const h of s.registre.hypotheses) errors.push(...validateHypothesis(h));
   for (const e of s.registre.evenements) {
@@ -96,12 +104,12 @@ export function validateScenario(s: Scenario): string[] {
     if (!(e.amplitude[0] <= e.amplitude[1])) errors.push(`${e.code} : amplitude minimale supérieure à la maximale`);
     if (!e.proprietaire?.trim()) errors.push(`${e.code} : propriétaire manquant (principe 3)`);
   }
-  errors.push(...checkMatrixRules(s.registre.correlations_rang));
+  errors.push(...checkMatrixRules(s.registre.correlations_rang, driverCodes(s.registre)));
   if (!(s.n >= 1000 && s.n <= 100000)) errors.push('N doit être compris entre 1 000 et 100 000 (7.1)');
   return errors;
 }
 
-export function runReference(s: Scenario, budget: BudgetGrid): RunRef {
+export function runReference(s: Scenario, budget: Budget): RunRef {
   const b = hash(budget);
   const r = hash(s.registre);
   const actifs = [...s.actifs].sort();
@@ -119,7 +127,7 @@ export function runReference(s: Scenario, budget: BudgetGrid): RunRef {
 
 export interface RunInput {
   scenario: Scenario;
-  budget: BudgetGrid;
+  budget: Budget;
   actuals?: Actuals;
   /** Phase rapide : distributions et leviers, sans analyses ni contrôles. */
   quick?: boolean;
@@ -127,22 +135,22 @@ export interface RunInput {
 
 export function simulate({ scenario: s, budget, actuals, quick = false }: RunInput): RunOutput | RunError {
   const t0 = performance.now();
-  const errors = validateScenario(s);
+  const errors = validateScenario(s, budget);
   if (errors.length) return { ok: false, errors };
   const reg = s.registre;
-  const ctx = samplingContext(reg);
-  const m = actuals ? Math.min(s.moisClos, actuals.lignes.length) : 0;
-  const act = m > 0 ? { lignes: actuals!.lignes.slice(0, m), cours: actuals!.cours.slice(0, m) } : undefined;
-  const dernierCours = act ? act.cours[m - 1] : undefined;
-  const d: Draws = drawAll(reg, budget, { n: s.n, graine: s.graine, moisClos: m, dernierCours }, ctx);
-  const neutral = neutralEffects();
-  const base = runPL(budget, d, { effects: neutral, actuals: act, detail: true });
+  const model: Model = buildModel(budget, reg);
+  const mc = actuals ? Math.min(s.moisClos, actuals.lignes.length) : 0;
+  const act = mc > 0 ? { lignes: actuals!.lignes.slice(0, mc), cours: actuals!.cours.slice(0, mc) } : undefined;
+  const dernierCours = act && act.cours.length ? act.cours[mc - 1] : undefined;
+  const d: Draws = drawAll(model, { n: s.n, graine: s.graine, moisClos: mc, dernierCours });
+  const neutral = neutralEffects(model);
+  const base = runPL(model, d, { effects: neutral, actuals: act, detail: true });
   const t1 = performance.now();
   const target = budget.ebitdaPublie;
   const stats = computeStats(base.annual, target);
 
   const caseOf = (codes: CaseCode[], code: string, libelle: string, type: CaseResult['type'], cout: number | null): CaseResult => {
-    const r = runPL(budget, d, { effects: buildEffects(codes, s.leviers, s.stress), actuals: act });
+    const r = runPL(model, d, { effects: buildEffects(model, codes, s.leviers, s.stress), actuals: act });
     const st = computeStats(r.annual, target);
     return { code, libelle, type, stats: st, dProb: st.prob - stats.prob, dP50: st.p50 - stats.p50, dP10: st.p10 - stats.p10, dEaR: st.ear - stats.ear, cout };
   };
@@ -155,36 +163,38 @@ export function simulate({ scenario: s, budget, actuals, quick = false }: RunInp
       cases.push(caseOf([l.code], l.code, l.libelle, 'levier', l.cout));
     }
   }
-  for (const p of PACKAGES) {
-    const cout = p.leviers.reduce((a, c) => a + (s.leviers.find((l) => l.code === c)?.cout ?? 0), 0);
-    cases.push(caseOf(p.leviers, p.code, p.libelle, 'paquet', cout));
+  const paquets = s.paquets.filter((p) => packageType(p, s.stress) === 'paquet');
+  const combis = s.paquets.filter((p) => packageType(p, s.stress) === 'stress');
+  for (const p of paquets) {
+    const cout = p.codes.reduce((a, c) => a + (s.leviers.find((l) => l.code === c)?.cout ?? 0), 0);
+    cases.push(caseOf(p.codes, p.code, p.libelle, 'paquet', cout));
   }
   for (const st of s.stress) cases.push(caseOf([st.code], st.code, st.libelle, 'stress', null));
-  cases.push(caseOf(['S1', 'S3'], 'S1+S3', 'Choc macro combiné', 'stress', null));
+  for (const p of combis) cases.push(caseOf(p.codes, p.code, p.libelle, 'stress', null));
 
   let selection: RunOutput['selection'] = null;
   if (s.actifs.length) {
-    const r = runPL(budget, d, { effects: buildEffects(s.actifs, s.leviers, s.stress), actuals: act });
+    const r = runPL(model, d, { effects: buildEffects(model, s.actifs, s.leviers, s.stress), actuals: act });
     selection = { codes: [...s.actifs], stats: computeStats(r.annual, target), annual: r.annual };
   }
 
   const bm = budgetMonthly(budget);
-  const controls = quick ? [] : runControls({ scenario: s, budget, reg, ctx, draws: d, base, effects: neutral, actuals: act, dernierCours });
-  const laws: LawInfo[] = reg.hypotheses.map((h) => {
-    if (h.code === 'H06') {
+  const controls = quick ? [] : runControls({ scenario: s, model, draws: d, base, effects: neutral, actuals: act, dernierCours });
+  const laws: LawInfo[] = reg.hypotheses.map((h, j) => {
+    if (j === model.fxIndex) {
       const fs = sorted(d.fxMean);
       const e: [number, number, number] = [percentileSorted(fs, 0.1), percentileSorted(fs, 0.5), percentileSorted(fs, 0.9)];
       return { code: h.code, loi: 'marche-aleatoire', asymetrie: null, p10: e[0], p50: e[1], p90: e[2], emp: e };
     }
-    const law = ctx.laws[h.code]!;
-    const sv = sorted(d.h[h.code as Exclude<typeof h.code, 'H06'>]);
+    const law = model.laws[j]!;
+    const sv = sorted(d.h[j]);
     return {
       code: h.code, loi: chooseLaw(h), asymetrie: h.p50 == null ? null : asymmetry(h.p10!, h.p50, h.p90!),
       p10: law.p10, p50: law.p50, p90: law.p90,
       emp: [percentileSorted(sv, 0.1), percentileSorted(sv, 0.5), percentileSorted(sv, 0.9)],
     };
   });
-  const fxs = sorted(d.fxMean);
+  const fxs = d.fxMean.length ? sorted(d.fxMean) : null;
   const out: RunOutput = {
     ok: true,
     partial: quick,
@@ -196,18 +206,18 @@ export function simulate({ scenario: s, budget, actuals, quick = false }: RunInp
     selection,
     cases,
     targets: objectives(budget).map((x) => ({ objectif: x, prob: probAtLeast(base.annual, x) })),
-    contributions: quick ? { items: [], blocks: [] } : contributions(d, base.annual),
-    totalEffects: quick ? [] : totalEffects(d, base.annual),
-    isolated: quick ? { base: NaN, effects: [] } : isolatedEffects(budget, reg, ctx),
-    events: quick ? [] : eventEffects(d, base.annual),
-    profile: quick ? [] : scenarioProfile(d, base.annual),
+    contributions: quick ? { items: [], blocks: [] } : contributions(model, d, base.annual),
+    totalEffects: quick ? [] : totalEffects(model, d, base.annual),
+    isolated: quick ? { base: NaN, effects: [] } : isolatedEffects(model),
+    events: quick ? [] : eventEffects(model, d, base.annual),
+    profile: quick ? [] : scenarioProfile(model, d, base.annual),
     fan: fanChart(base, bm),
     quarters: quick ? [] : quarterly(base, bm),
-    bus: quick ? [] : byBu(base, budget),
+    bus: quick ? [] : byBu(model, base),
     controls,
     blocking: quick || controls.some((c) => c.nature === 'Bloquant' && !c.ok),
     laws,
-    fxStats: [percentileSorted(fxs, 0.1), percentileSorted(fxs, 0.5), percentileSorted(fxs, 0.9)],
+    fxStats: fxs ? [percentileSorted(fxs, 0.1), percentileSorted(fxs, 0.5), percentileSorted(fxs, 0.9)] : null,
     timings: { simulation: t1 - t0, total: 0 },
   };
   out.timings.total = performance.now() - t0;
@@ -215,19 +225,24 @@ export function simulate({ scenario: s, budget, actuals, quick = false }: RunInp
 }
 
 /** Autres objectifs chiffrés sur la même distribution (9.1). */
-export function objectives(budget: BudgetGrid): number[] {
+export function objectives(budget: Budget): number[] {
   if (budget.source === 'alfa' && Math.abs(budget.ebitdaPublie - 9.4) < 1e-9) return [8.5, 9.0, 9.4, 10.0];
   const t = budget.ebitdaPublie;
-  return [0.9, 0.95, 1, 1.05].map((f) => Math.round(t * f * 10) / 10);
+  const a = Math.abs(t);
+  if (!(a > 0)) return [t];
+  // Objectifs à −10 %, −5 %, 0 et +5 % de l'EBITDA budgété, arrondis à trois chiffres significatifs, budget exact.
+  const e = Math.floor(Math.log10(a)) - 2;
+  const round = (x: number) => Number((Math.round(x / 10 ** e) * 10 ** e).toFixed(Math.max(0, -e)));
+  const out = [-0.1, -0.05, 0, 0.05].map((f) => (f === 0 ? t : round(t + a * f)));
+  return [...new Set(out)];
 }
 
 /** Tirages et P&L détaillés, pour les exports (le grain complet se recalcule à partir de la graine, R-PL-05). */
 export function detailedRun({ scenario: s, budget, actuals }: RunInput) {
-  const reg = s.registre;
-  const ctx = samplingContext(reg);
-  const m = actuals ? Math.min(s.moisClos, actuals.lignes.length) : 0;
-  const act = m > 0 ? { lignes: actuals!.lignes.slice(0, m), cours: actuals!.cours.slice(0, m) } : undefined;
-  const d = drawAll(reg, budget, { n: s.n, graine: s.graine, moisClos: m, dernierCours: act?.cours[m - 1] }, ctx);
-  const base = runPL(budget, d, { actuals: act, detail: true });
-  return { draws: d, base };
+  const model = buildModel(budget, s.registre);
+  const mc = actuals ? Math.min(s.moisClos, actuals.lignes.length) : 0;
+  const act = mc > 0 ? { lignes: actuals!.lignes.slice(0, mc), cours: actuals!.cours.slice(0, mc) } : undefined;
+  const d = drawAll(model, { n: s.n, graine: s.graine, moisClos: mc, dernierCours: act?.cours[mc - 1] });
+  const base = runPL(model, d, { actuals: act, detail: true });
+  return { model, draws: d, base };
 }

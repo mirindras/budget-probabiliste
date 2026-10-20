@@ -1,17 +1,20 @@
 <script lang="ts">
   import Tornado from '../charts/Tornado.svelte';
-  import { gar, num, pct } from '../format.ts';
+  import { amount, num, pct, rate } from '../format.ts';
   import { app } from '../state.svelte.ts';
+  import { units } from '../units.svelte.ts';
 
   const r = $derived(app.result);
   const labels = $derived(Object.fromEntries([...app.scenario.registre.hypotheses, ...app.scenario.registre.evenements].map((h) => [h.code, h.libelle])));
   const top = $derived(r?.contributions.blocks.length ? [...r.contributions.blocks].sort((a, b) => b.part - a.part)[0] : null);
-  const commercial = $derived(r?.contributions.items.find((i) => ['H01', 'H02', 'H03', 'H04', 'H05', 'H11', 'E02'].includes(i.code)));
+  const drivers = $derived([...app.scenario.registre.hypotheses, ...app.scenario.registre.evenements]);
+  const commercial = $derived(r?.contributions.items.find((i) => drivers.find((d) => d.code === i.code)?.famille === 'Commercial'));
 
   function profileFmt(code: string, v: number): string {
-    if (code === 'H06') return num(v, 0);
-    if (code.startsWith('E')) return `${pct(v)} des cas`;
-    if (code === 'H05') return `${num(v, 2)} pt`;
+    const h = app.scenario.registre.hypotheses.find((x) => x.code === code);
+    if (!h) return `${pct(v)} des cas`;
+    if (h.effet === 'change') return rate(v);
+    if (h.effet === 'marge') return `${num(v, 2)} pt`;
     const d = (v - 1) * 100;
     return `${d > 0.05 ? '+' : d < -0.05 ? '−' : ''}${num(Math.abs(d), 1)} %`;
   }
@@ -46,7 +49,7 @@
 
     <section>
       <h2>Effet isolé : ce qu'une action ciblée peut changer</h2>
-      <p class="small muted">EBITDA quand l'hypothèse seule passe de son P10 à son P90, toutes les autres à leur P50 ({gar(r.isolated.base, 2)}). Les événements sont appliqués à leur amplitude moyenne, en juillet.</p>
+      <p class="small muted">EBITDA quand l'hypothèse seule passe de son P10 à son P90, toutes les autres à leur P50 ({amount(r.isolated.base, 2)}). Les événements sont appliqués à leur amplitude moyenne, en juillet.</p>
       <Tornado effects={r.isolated.effects} reference={r.isolated.base} {labels} lowLabel="au P10 (ou sans l'événement)" highLabel="au P90 (ou avec l'événement)" />
       <h2 class="mt">Effet total : ce que l'entreprise subit, corrélations comprises</h2>
       <p class="small muted">EBITDA médian quand l'hypothèse est autour de son P10 (bande P5-P15) puis de son P90 (bande P85-P95). Classement distinct de l'effet isolé (R-RI-03).</p>
@@ -63,7 +66,7 @@
           {/each}
         </tbody>
       </table>
-      <p class="small muted">L'écart d'un événement corrélé au change inclut le change : une révision du carburant survient surtout les années de dépréciation.</p>
+      <p class="small muted">L'écart d'un événement corrélé à une hypothèse inclut l'effet de cette hypothèse{app.isAlfa ? ' : une révision du carburant survient surtout les années de dépréciation' : ''}.</p>
 
       <h2 class="mt">Une année « 1 chance sur 10 » n'est pas une catastrophe</h2>
       <p class="small muted">Moyenne des hypothèses sur les itérations comprises entre P5 et P15 de l'EBITDA, contre l'ensemble.</p>
@@ -82,8 +85,8 @@
       <table class="small">
         <thead><tr><th>Objectif d'EBITDA</th><th class="num">Probabilité</th></tr></thead>
         <tbody>
-          {#each r.targets as t (t.objectif)}<tr><td>{gar(t.objectif)}</td><td class="num">{pct(t.prob)}</td></tr>{/each}
-          <tr><td>Objectif tenu 8 fois sur 10 (P20)</td><td class="num">{gar(r.base.p20)}</td></tr>
+          {#each r.targets as t (t.objectif)}<tr><td>{amount(t.objectif)}</td><td class="num">{pct(t.prob)}</td></tr>{/each}
+          <tr><td>Objectif tenu 8 fois sur 10 (P20)</td><td class="num">{amount(r.base.p20)}</td></tr>
         </tbody>
       </table>
       <h2 class="mt">Par trimestre</h2>
@@ -95,7 +98,8 @@
           {/each}
         </tbody>
       </table>
-      <h2 class="mt">Marge brute par BU</h2>
+      <h2 class="mt">Marge par BU</h2>
+      <p class="small muted">Chiffre d'affaires de la BU moins les charges qui lui sont rattachées ; les postes communs n'y figurent pas.</p>
       <table class="small">
         <thead><tr><th>BU</th><th class="num">Budget</th><th class="num">P10</th><th class="num">P50</th><th class="num">P90</th><th class="num">Probabilité</th></tr></thead>
         <tbody>
@@ -104,7 +108,7 @@
           {/each}
         </tbody>
       </table>
-      <p class="small muted">Montants en GAr. Écart-type de l'EBITDA annuel : {gar(r.base.std)} ; moyenne : {gar(r.base.mean)}.</p>
+      <p class="small muted">Montants en {units.principale}. Écart-type de l'EBITDA annuel : {amount(r.base.std)} ; moyenne : {amount(r.base.mean)}.</p>
     </section>
   </div>
 {/if}

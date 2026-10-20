@@ -1,137 +1,265 @@
-/** M5 : moteur P&L, recalcul mensuel par itération (section 8, règles F.2). */
+/**
+ * M5 : moteur P&L générique, recalcul mensuel par itération (section 8, règles F.2).
+ * Chaque mois : volumes et prix des BU, puis chaque poste (montant budgété × assiette × hypothèses × change
+ * × événements × stress), cumulé dans sa rubrique ; l'EBITDA est la somme signée des rubriques.
+ */
 import { neutralEffects, type Effects } from './levers.ts';
+import { ASS_CA, ASS_VOLUME, type Model } from './model.ts';
 import type { Draws } from './sampling.ts';
-import type { Actuals, BudgetGrid } from './types.ts';
-
-export const NL = 8; // ca, cm, mix, transport, ms, fc, fg, ebitda
-export const L_CA = 0, L_CM = 1, L_MIX = 2, L_TR = 3, L_MS = 4, L_FC = 5, L_FG = 6, L_EBITDA = 7;
+import type { Actuals } from './types.ts';
 
 export interface PLOptions {
   effects?: Effects;
   /** Bruit mensuel des volumes (désactivé pour C01). */
   noise?: boolean;
-  /** Événements E01 à E03 (désactivés pour C01). */
+  /** Événements tirés (désactivés pour C01). */
   events?: boolean;
   /** Réalisé des mois clos (mode atterrissage). */
   actuals?: Actuals;
-  /** Conserver les lignes annuelles et les marges par BU (exports, contrôles). */
+  /** Conserver les rubriques annuelles et les marges par BU (exports, contrôles). */
   detail?: boolean;
-  /** Conserver les lignes mensuelles (réalisé synthétique, petits N). */
+  /** Conserver les rubriques mensuelles (réalisé synthétique, petits N). */
   monthlyLines?: boolean;
 }
 
 export interface PLResult {
   n: number;
+  /** Nombre de lignes de résultat : une par rubrique, puis l'EBITDA. */
+  nl: number;
   /** EBITDA annuel par itération. */
   annual: Float64Array;
   /** EBITDA mensuel, n × 12. */
   monthly: Float64Array;
-  /** Lignes annuelles, n × 8 (si detail). */
+  /** Rubriques annuelles puis EBITDA, n × nl (si detail). */
   lines?: Float64Array;
-  /** Marge brute annuelle par BU, n × nb (si detail). */
+  /** Marge annuelle par BU, n × nb : somme signée des postes de la BU (si detail). */
   buMargin?: Float64Array;
-  /** Lignes mensuelles, n × 12 × 8 (si monthlyLines). */
+  /** Même total recalculé par rubrique, pour le contrôle d'agrégation C02 (si detail). */
+  buCheck?: Float64Array;
+  /** Rubriques mensuelles puis EBITDA, n × 12 × nl (si monthlyLines). */
   monthlyLines?: Float64Array;
   /** Itérations ayant touché une borne physique (R-PL-04). */
   boundHits: number;
 }
 
-export function runPL(budget: BudgetGrid, d: Draws, opt: PLOptions = {}): PLResult {
-  const e = opt.effects ?? neutralEffects();
+export function runPL(m: Model, d: Draws, opt: PLOptions = {}): PLResult {
+  const e = opt.effects ?? neutralEffects(m);
   const noiseOn = opt.noise ?? true;
   const eventsOn = opt.events ?? true;
   const detail = opt.detail ?? false;
-  const { n, nb } = d;
-  const m = opt.actuals ? Math.min(opt.actuals.lignes.length, d.moisClos || opt.actuals.lignes.length) : 0;
+  const { n } = d;
+  const { nb, nr, np, nh, ne } = m;
+  const nl = nr + 1;
+  const mc = opt.actuals ? Math.min(opt.actuals.lignes.length, d.moisClos || opt.actuals.lignes.length) : 0;
   const annual = new Float64Array(n);
   const monthly = new Float64Array(n * 12);
-  const lines = detail ? new Float64Array(n * NL) : undefined;
+  const lines = detail ? new Float64Array(n * nl) : undefined;
   const buMargin = detail ? new Float64Array(n * nb) : undefined;
-  const ml = opt.monthlyLines ? new Float64Array(n * 12 * NL) : undefined;
+  const buCheck = detail ? new Float64Array(n) : undefined;
+  const ml = opt.monthlyLines ? new Float64Array(n * 12 * nl) : undefined;
 
-  const bump = e.bump;
-  const kCmImp = bump === 'cmImp' ? 1.01 : 1;
-  const kCmLoc = bump === 'cmLoc' ? 1.01 : 1;
-  const kTr = bump === 'transport' ? 1.01 : 1;
-  const kMs = bump === 'ms' ? 1.01 : 1;
-  const kFc = bump === 'fc' ? 1.01 : 1;
-  const kFg = bump === 'fg' ? 1.01 : 1;
-  const kFx = bump === 'cours' ? 1.01 : 1;
-
-  const caBudgetMonth = new Float64Array(12);
-  for (let t = 0; t < 12; t++) for (let b = 0; b < nb; b++) caBudgetMonth[t] += budget.ca[b][t];
+  const kFx = e.bumpFx ? 1.01 : 1;
+  const fxOn = m.fxIndex >= 0 && d.fx.length > 0;
+  const rub = new Float64Array(nr);
+  const rubBU = new Float64Array(nr);
+  const sL = new Float64Array(nr);
   const V = new Float64Array(nb);
-  const H = [d.h.H01, d.h.H02, d.h.H03];
+  const P = new Float64Array(nb);
+  const CAb = new Float64Array(nb);
+  const val = new Float64Array(nh);
+  const volBase = new Float64Array(nb);
+  const priceBase = new Float64Array(nb);
+  const mult = new Float64Array(np);
+  const caTmp = new Float64Array(np);
+  const occ = new Uint8Array(ne);
+  const mon = new Int32Array(ne);
+  const amp = new Float64Array(ne);
+  const cost = new Float64Array(ne);
+  const { pR, pB, pAss, pDev, pAmt, pCA, pHyps, pEvents, caPostes, volHyps, prixHyps, volEvents, evMask, evSign, evMonthly, evSurcoutR, caBud, caBudMonth, rubSign } = m;
   let boundHits = 0;
+  let ratio = 1;
+
+  /** Facteurs d'un poste : hypothèses, part en devises, événements et stress du mois. */
+  const posteFactors = (x0: number, p: number, t: number): number => {
+    let x = x0 * mult[p];
+    const dv = pDev[p];
+    if (dv > 0) x *= dv * ratio + (1 - dv);
+    const pe = pEvents[p];
+    for (let q = 0; q < pe.length; q++) {
+      const k = pe[q];
+      const f = e.forced[k];
+      if (f) {
+        if (evMonthly[k] ? t === f.from : t >= f.from) x *= 1 + evSign[k] * f.amp;
+      } else if (occ[k] && (evMonthly[k] ? t === mon[k] : t >= mon[k])) {
+        x *= 1 + evSign[k] * amp[k];
+      }
+    }
+    for (let q = 0; q < e.posteShocks.length; q++) {
+      const s = e.posteShocks[q];
+      if (s.p === p && t >= s.from) x *= s.factor;
+    }
+    return x;
+  };
 
   for (let i = 0; i < n; i++) {
-    const h04 = d.h.H04[i], h05 = d.h.H05[i], h07 = d.h.H07[i], h08 = d.h.H08[i];
-    const h09 = e.h09Cap !== null ? Math.min(d.h.H09[i], e.h09Cap) : d.h.H09[i];
-    const h10 = d.h.H10[i], h11 = d.h.H11[i], h12 = d.h.H12[i];
-    const e01 = eventsOn && d.occ.E01[i] === 1;
-    const e02 = eventsOn && d.occ.E02[i] === 1 && !e.forcedLoss;
-    const e03 = eventsOn && d.occ.E03[i] === 1;
-    const m1 = d.month.E01[i], m2 = d.month.E02[i], m3 = d.month.E03[i];
-    const a1 = d.amp.E01[i], a2 = d.amp.E02[i], a3 = d.amp.E03[i] * e.e03AmpFactor;
+    // Valeurs de l'itération, bornées par les leviers de plafond.
+    for (let j = 0; j < nh; j++) {
+      if (j === m.fxIndex) continue;
+      let x = d.h[j][i];
+      if (x > e.capMax[j]) x = e.capMax[j];
+      if (x < e.capMin[j]) x = e.capMin[j];
+      val[j] = x;
+    }
+    for (let b = 0; b < nb; b++) {
+      let v = 1;
+      const vh = volHyps[b];
+      for (let q = 0; q < vh.length; q++) v *= val[vh[q]];
+      volBase[b] = v;
+      let pr = 1;
+      const ph = prixHyps[b];
+      for (let q = 0; q < ph.length; q++) pr *= val[ph[q]];
+      priceBase[b] = pr;
+    }
+    for (let p = 0; p < np; p++) {
+      let x = 1;
+      const hs = pHyps[p];
+      for (let q = 0; q < hs.length; q++) x *= val[hs[q]];
+      mult[p] = x;
+    }
+    for (let k = 0; k < ne; k++) {
+      occ[k] = eventsOn && d.occ[k][i] === 1 && !e.forced[k] ? 1 : 0;
+      mon[k] = d.month[k][i];
+      amp[k] = d.amp[k][i] * e.eventAmp[k];
+      cost[k] = d.cost[k][i];
+    }
     let hit = false;
     let sum = 0;
-    let sCa = 0, sCm = 0, sMix = 0, sTr = 0, sMs = 0, sFc = 0, sFg = 0;
+    sL.fill(0);
+    if (detail) rubBU.fill(0);
 
     for (let t = 0; t < 12; t++) {
-      let ebitda: number;
-      if (t < m) {
+      let ebitda = 0;
+      if (t < mc) {
         const a = opt.actuals!.lignes[t];
-        ebitda = a[L_EBITDA];
-        sCa += a[L_CA]; sCm += a[L_CM]; sMix += a[L_MIX]; sTr += a[L_TR]; sMs += a[L_MS]; sFc += a[L_FC]; sFg += a[L_FG];
+        ebitda = a[nr];
+        for (let r = 0; r < nr; r++) sL[r] += a[r];
+        if (ml) for (let r = 0; r < nl; r++) ml[(i * 12 + t) * nl + r] = a[r];
       } else {
-        let fx = d.fx[i * 12 + t];
-        if (e.fxShock && t >= e.fxShock.from) fx *= e.fxShock.factor;
-        if (!(fx > 0)) hit = true;
-        let rate = e.hedge ? e.hedge.part * e.hedge.cours + (1 - e.hedge.part) * fx : fx;
-        rate *= kFx;
-        const impF = (rate / budget.coursBudget) * h07 * kCmImp;
-        const locF = h08 * kCmLoc;
-        let ca = 0, cm = 0, volIdx = 0;
+        // Change : cours du mois, choc éventuel, couverture.
+        ratio = 1;
+        if (fxOn) {
+          let fx = d.fx[i * 12 + t];
+          if (e.fxShock && t >= e.fxShock.from) fx *= e.fxShock.factor;
+          if (!(fx > 0)) hit = true;
+          let rate = e.hedge ? e.hedge.part * e.hedge.cours + (1 - e.hedge.part) * fx : fx;
+          rate *= kFx;
+          ratio = rate / m.coursBudget;
+        }
+        // Volumes et prix des BU.
+        let idx = 0;
         for (let b = 0; b < nb; b++) {
-          let v = b < 3 ? H[b][i] : 1;
+          let v = volBase[b];
           if (noiseOn) v *= 1 + d.noise[(i * nb + b) * 12 + t];
-          if (e02 && b <= 1 && t >= m2) v *= 1 - a2;
-          if (e.forcedLoss && b <= 1 && t >= e.forcedLoss.from) v *= 1 - e.forcedLoss.amp;
-          if (e03 && (b === 1 || b === 2) && t === m3) v *= 1 - a3;
-          let price = h04;
-          if (e.price && t >= e.price.from && e.price.bus.includes(b)) {
-            price *= e.price.factor;
-            v *= e.price.volume;
+          for (let q = 0; q < volEvents.length; q++) {
+            const k = volEvents[q];
+            if (!evMask[k][b]) continue;
+            const f = e.forced[k];
+            if (f) {
+              if (evMonthly[k] ? t === f.from : t >= f.from) v *= 1 + evSign[k] * f.amp;
+            } else if (occ[k] && (evMonthly[k] ? t === mon[k] : t >= mon[k])) {
+              v *= 1 + evSign[k] * amp[k];
+            }
+          }
+          for (let q = 0; q < e.volShocks.length; q++) {
+            const s = e.volShocks[q];
+            if (t >= s.from && s.mask[b]) v *= s.factor;
+          }
+          let price = priceBase[b];
+          for (let q = 0; q < e.prices.length; q++) {
+            const pr = e.prices[q];
+            if (t >= pr.from && pr.mask[b]) {
+              price *= pr.factor;
+              v *= pr.volume;
+            }
           }
           if (v < 0) {
             hit = true;
             v = 0;
           }
           V[b] = v;
-          const caB = budget.ca[b][t] * v * price;
-          const cmB = (budget.cmImp[b][t] * impF + budget.cmLoc[b][t] * locF) * v;
-          ca += caB;
-          cm += cmB;
-          volIdx += budget.ca[b][t] * v;
-          if (buMargin) buMargin[i * nb + b] += caB - cmB;
+          P[b] = price;
+          idx += caBud[b * 12 + t] * v;
         }
-        volIdx /= caBudgetMonth[t];
-        const mix = (h05 / 100) * ca;
-        let fuel = 1;
-        if (e01 && t >= m1) fuel *= 1 + a1;
-        if (e.fuelShock && t >= e.fuelShock.from) fuel *= e.fuelShock.factor;
-        let tr = budget.carburant[t] * volIdx * fuel + budget.sousTraitance[t] * volIdx * h09 + budget.autresTransport[t];
-        if (e03 && t === m3 && !e.e03NoCost) tr += d.e03Cost[i];
-        tr *= kTr;
-        const ms = budget.masseSalariale[t] * h10 * kMs;
-        const fc = (budget.fcTauxVariable * ca + budget.fcFixe[t]) * h11 * kFc;
-        const fg = (budget.fraisGeneraux[t] * h12 + e.fgDelta[t]) * kFg;
-        ebitda = ca - cm + mix - tr - ms - fc - fg;
-        sCa += ca; sCm += cm; sMix += mix; sTr += tr; sMs += ms; sFc += fc; sFg += fg;
+        let volIdx: number;
+        if (caBudMonth[t] > 0) volIdx = idx / caBudMonth[t];
+        else {
+          volIdx = 0;
+          for (let b = 0; b < nb; b++) volIdx += V[b] / nb;
+        }
+
+        // Chiffre d'affaires d'abord : les postes à assiette CA et les points de marge en dépendent.
+        let caTot = 0;
+        CAb.fill(0);
+        for (let q = 0; q < caPostes.length; q++) {
+          const p = caPostes[q];
+          const b = pB[p];
+          let x = pAmt[p * 12 + t];
+          if (pAss[p] === ASS_VOLUME) x *= V[b];
+          x *= P[b];
+          x = posteFactors(x, p, t);
+          caTmp[p] = x;
+          CAb[b] += x;
+          caTot += x;
+        }
+
+        rub.fill(0);
+        for (let p = 0; p < np; p++) {
+          let x: number;
+          const b = pB[p];
+          if (pCA[p]) x = caTmp[p];
+          else {
+            x = pAmt[p * 12 + t];
+            if (pAss[p] === ASS_VOLUME) x *= b >= 0 ? V[b] : volIdx;
+            else if (pAss[p] === ASS_CA) {
+              if (b >= 0) x *= caBud[b * 12 + t] > 0 ? CAb[b] / caBud[b * 12 + t] : 1;
+              else x *= caBudMonth[t] > 0 ? caTot / caBudMonth[t] : 1;
+            }
+            x = posteFactors(x, p, t);
+          }
+          rub[pR[p]] += x;
+          if (detail && b >= 0) {
+            buMargin![i * nb + b] += rubSign[pR[p]] * x;
+            rubBU[pR[p]] += x;
+          }
+        }
+        for (let q = 0; q < m.marge.length; q++) {
+          const g = m.marge[q];
+          let base = caTot;
+          if (g.mask) {
+            base = 0;
+            for (let b = 0; b < nb; b++) if (g.mask[b]) base += CAb[b];
+          }
+          // Des points de marge en plus améliorent l'EBITDA, quelle que soit la rubrique d'arrivée (produit ou charge).
+          rub[g.r] += rubSign[g.r] * (val[g.j] / 100) * base;
+        }
+        for (let k = 0; k < ne; k++) {
+          const r = evSurcoutR[k];
+          if (r < 0 || e.eventNoCost[k]) continue;
+          const f = e.forced[k];
+          if (f ? t === f.from : occ[k] && t === mon[k]) rub[r] += cost[k];
+        }
+        for (let r = 0; r < nr; r++) rub[r] += e.rubDelta[r * 12 + t];
+        if (e.bump >= 0) rub[e.bump] *= 1.01;
+        for (let r = 0; r < nr; r++) {
+          ebitda += rubSign[r] * rub[r];
+          sL[r] += rub[r];
+        }
         if (ml) {
-          const o = (i * 12 + t) * NL;
-          ml[o] = ca; ml[o + 1] = cm; ml[o + 2] = mix; ml[o + 3] = tr; ml[o + 4] = ms; ml[o + 5] = fc; ml[o + 6] = fg; ml[o + 7] = ebitda;
+          const o = (i * 12 + t) * nl;
+          for (let r = 0; r < nr; r++) ml[o + r] = rub[r];
+          ml[o + nr] = ebitda;
         }
+
       }
       monthly[i * 12 + t] = ebitda;
       sum += ebitda;
@@ -139,25 +267,16 @@ export function runPL(budget: BudgetGrid, d: Draws, opt: PLOptions = {}): PLResu
     annual[i] = sum;
     if (hit) boundHits++;
     if (lines) {
-      const o = i * NL;
-      lines[o] = sCa; lines[o + 1] = sCm; lines[o + 2] = sMix; lines[o + 3] = sTr;
-      lines[o + 4] = sMs; lines[o + 5] = sFc; lines[o + 6] = sFg; lines[o + 7] = sum;
+      const o = i * nl;
+      for (let r = 0; r < nr; r++) lines[o + r] = sL[r];
+      lines[o + nr] = sum;
+    }
+    if (detail) {
+      // Les postes de BU, recomptés par rubrique : la somme des marges par BU doit la retrouver (C02).
+      let c = 0;
+      for (let r = 0; r < nr; r++) c += rubSign[r] * rubBU[r];
+      buCheck![i] = c;
     }
   }
-  return { n, annual, monthly, lines, buMargin, monthlyLines: ml, boundHits };
-}
-
-/** EBITDA mensuel du budget (toutes hypothèses au budget, sans aléa). */
-export function budgetMonthly(budget: BudgetGrid): number[] {
-  const nb = budget.bu.length;
-  return Array.from({ length: 12 }, (_, t) => {
-    let ca = 0, cm = 0;
-    for (let b = 0; b < nb; b++) {
-      ca += budget.ca[b][t];
-      cm += budget.cmImp[b][t] + budget.cmLoc[b][t];
-    }
-    const tr = budget.carburant[t] + budget.sousTraitance[t] + budget.autresTransport[t];
-    const fc = budget.fcTauxVariable * ca + budget.fcFixe[t];
-    return ca - cm - tr - budget.masseSalariale[t] - fc - budget.fraisGeneraux[t];
-  });
+  return { n, nl, annual, monthly, lines, buMargin, buCheck, monthlyLines: ml, boundHits };
 }

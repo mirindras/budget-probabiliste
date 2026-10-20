@@ -1,6 +1,7 @@
 <script lang="ts">
   import type { FanPoint } from '../../engine/risk.ts';
-  import { MOIS_COURT, num } from '../format.ts';
+  import { amount, MOIS_COURT, niceStep, num } from '../format.ts';
+  import { units } from '../units.svelte.ts';
 
   interface Props {
     fan: FanPoint[];
@@ -11,7 +12,14 @@
 
   const W = 640;
   const H = 280;
-  const M = { l: 44, r: 16, t: 14, b: 34 };
+  const yticks = $derived.by(() => {
+    const step = niceStep(vmax - vmin);
+    const out: number[] = [];
+    for (let v = Math.ceil(vmin / step) * step; v <= vmax; v += step) out.push(Math.round(v / step) * step);
+    return out;
+  });
+  /** Marge gauche à la mesure du plus long libellé de l'axe (montants en k€ ou en € compris). */
+  const M = $derived({ l: Math.max(44, Math.max(...yticks.map((t) => num(t, 0).length)) * 6.6 + 12), r: 16, t: 14, b: 34 });
   const vmax = $derived(Math.max(...fan.map((f) => Math.max(f.p90, f.budget)), ...actual) * 1.05);
   const vmin = $derived(Math.min(0, ...fan.map((f) => f.p10)));
   const x = (m: number) => M.l + ((m - 0.5) / 12) * (W - M.l - M.r);
@@ -20,12 +28,6 @@
     `M${fan.map((f) => `${x(f.mois)},${y(f.p90)}`).join(' L')} L${[...fan].reverse().map((f) => `${x(f.mois)},${y(f.p10)}`).join(' L')} Z`,
   );
   const line = (k: 'p50' | 'budget') => `M${fan.map((f) => `${x(f.mois)},${y(f[k])}`).join(' L')}`;
-  const yticks = $derived.by(() => {
-    const step = vmax > 12 ? 2 : 1;
-    const out: number[] = [];
-    for (let v = Math.ceil(vmin / step) * step; v <= vmax; v += step) out.push(v);
-    return out;
-  });
   let hover = $state<number | null>(null);
 </script>
 
@@ -47,15 +49,15 @@
       <rect x={x(f.mois) - (W - M.l - M.r) / 24} y={M.t} width={(W - M.l - M.r) / 12} height={H - M.t - M.b} fill="transparent" role="presentation" onmouseenter={() => (hover = f.mois)} onmouseleave={() => (hover = null)} />
     {/each}
     {#if hover}<line x1={x(hover)} x2={x(hover)} y1={M.t} y2={H - M.b} class="cursor" />{/if}
-    <text x={(W + M.l) / 2} y={H - 3} class="tick" text-anchor="middle">EBITDA cumulé depuis janvier, en GAr</text>
+    <text x={(W + M.l) / 2} y={H - 3} class="tick" text-anchor="middle">EBITDA cumulé depuis janvier, en {units.principale}</text>
   </svg>
   {#if hover}
     {@const f = fan[hover - 1]}
     <div class="tooltip" style="left: {Math.min(80, Math.max(20, (x(hover) / W) * 100))}%">
       <strong>Fin {MOIS_COURT[hover - 1]}</strong><br />
-      entre {num(f.p10)} et {num(f.p90)} GAr (8 chances sur 10)<br />
-      médian {num(f.p50)} GAr · budget {num(f.budget)} GAr
-      {#if actual[hover - 1] !== undefined}<br />réalisé {num(actual[hover - 1])} GAr{/if}
+      entre {num(f.p10)} et {amount(f.p90)} (8 chances sur 10)<br />
+      médian {amount(f.p50)} · budget {amount(f.budget)}
+      {#if actual[hover - 1] !== undefined}<br />réalisé {amount(actual[hover - 1])}{/if}
     </div>
   {/if}
   <div class="legend small">

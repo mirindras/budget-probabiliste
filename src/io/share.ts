@@ -1,12 +1,13 @@
 /** Lien de partage : scénario compressé dans l'ancre (jamais envoyée au serveur), R-RE-07. */
 import { compressToEncodedURIComponent, decompressFromEncodedURIComponent } from 'lz-string';
+import { migrateScenario } from '../engine/legacy.ts';
 import { checkScenarioShape } from '../engine/schema.ts';
 import type { Scenario } from '../engine/types.ts';
 
 export const HASH_KEY = 's';
 /**
  * Bornes du lien, contrôlées avant décompression puis avant analyse JSON.
- * Un lien ALFA fait 6 467 caractères pour 9 863 caractères de JSON, revue des risques comprise.
+ * Un lien ALFA fait 7 559 caractères pour 11 724 caractères de JSON, revue des risques et portées comprises.
  */
 export const LINK_LIMITS = { encoded: 16_000, json: 100_000 } as const;
 
@@ -25,7 +26,8 @@ export function readScenario(code: string): Decoded {
     const json = decompressFromEncodedURIComponent(code);
     if (!json) return { ok: false, errors: ['Lien tronqué ou illisible'] };
     if (json.length > LINK_LIMITS.json) return { ok: false, errors: ['Contenu du lien trop volumineux'] };
-    parsed = JSON.parse(json);
+    // Un lien de la version 1 (codes fixes d'ALFA) se relit dans le modèle configurable.
+    parsed = migrateScenario(JSON.parse(json));
   } catch {
     return { ok: false, errors: ['Lien tronqué ou illisible'] };
   }

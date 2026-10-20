@@ -1,6 +1,6 @@
 <script lang="ts">
   import type { Effect } from '../../engine/risk.ts';
-  import { num } from '../format.ts';
+  import { amount, amountDetail } from '../format.ts';
 
   /** Effet sur l'EBITDA d'une hypothèse de son P10 à son P90, trié par amplitude. */
   interface Props {
@@ -12,24 +12,24 @@
   }
   let { effects, reference, labels, lowLabel = 'au P10', highLabel = 'au P90' }: Props = $props();
   const rows = $derived([...effects].filter((e) => Number.isFinite(e.low) && Number.isFinite(e.high)).sort((a, b) => Math.abs(b.high - b.low) - Math.abs(a.high - a.low)));
-  const span = $derived(Math.max(0.2, ...rows.map((r) => Math.max(Math.abs(r.low - reference), Math.abs(r.high - reference)))) * 1.05);
+  const span = $derived(Math.max(Math.abs(reference) * 0.02 || 0.2, ...rows.map((r) => Math.max(Math.abs(r.low - reference), Math.abs(r.high - reference)))) * 1.05);
   const pos = (v: number) => 50 + ((v - reference) / span) * 50;
 </script>
 
 <div class="tornado">
-  <div class="head small muted"><span></span><span>EBITDA, écart à {num(reference, 2)} GAr</span><span class="num">amplitude</span></div>
+  <div class="head small muted"><span></span><span>EBITDA, écart à {amount(reference, 2)}</span><span class="num">amplitude</span></div>
   {#each rows as r (r.code)}
     {@const a = pos(Math.min(r.low, r.high))}
     {@const b = pos(Math.max(r.low, r.high))}
     <div class="row">
       <span class="name small" title={labels[r.code]}>{r.code} {labels[r.code]}</span>
-      <span class="track" title="{lowLabel} : {num(r.low, 2)} GAr · {highLabel} : {num(r.high, 2)} GAr">
+      <span class="track" title="{lowLabel} : {amount(r.low, 2)} · {highLabel} : {amount(r.high, 2)}">
         <i class="zero"></i>
         <i class="seg" style="left:{a}%; width:{Math.max(0.5, b - a)}%"></i>
         <i class="m lo" style="left:{pos(r.low)}%"></i>
         <i class="m hi" style="left:{pos(r.high)}%"></i>
       </span>
-      <span class="v small num">{num(Math.abs(r.high - r.low) * 1000, 0)} MAr</span>
+      <span class="v small num">{amountDetail(Math.abs(r.high - r.low))}</span>
     </div>
   {/each}
   <div class="legend small muted"><span><i class="m lo"></i>{lowLabel}</span><span><i class="m hi"></i>{highLabel}</span></div>

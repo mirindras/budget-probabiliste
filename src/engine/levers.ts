@@ -1,36 +1,40 @@
 /** M7 : leviers et stress tests appliqués en surcouche, à aléa commun (section 10, règles F.3). */
-import type { CaseCode, LeverDef, StressDef } from './types.ts';
-
-export type Bump = 'cmImp' | 'cmLoc' | 'transport' | 'ms' | 'fc' | 'fg' | 'cours';
-export const BUMPS: Bump[] = ['cmImp', 'cmLoc', 'transport', 'ms', 'fc', 'fg', 'cours'];
+import { buMask, postesOf, type Model } from './model.ts';
+import type { CaseCode, LeverDef, Paquet, StressDef } from './types.ts';
 
 /** Effets combinés des leviers et stress actifs, lus par le moteur P&L. */
 export interface Effects {
-  /** L1 : part couverte et cours garanti. */
+  /** Couverture de change : part couverte et cours garanti. */
   hedge: { part: number; cours: number } | null;
-  /** L2 : hausse de prix et effet volume à partir d'un mois, sur certaines BU. */
-  price: { factor: number; volume: number; from: number; bus: number[] } | null;
-  /** Ajustement additif des frais généraux par mois (L3, L5). */
-  fgDelta: Float64Array;
-  /** L4 : plafond de H09. */
-  h09Cap: number | null;
-  /** L5 : facteur sur l'amplitude de E03 et suppression du surcoût. */
-  e03AmpFactor: number;
-  e03NoCost: boolean;
-  /** S1 : choc sur le cours. */
+  /** Hausses de prix avec effet volume, à partir d'un mois, sur des BU. */
+  prices: { factor: number; volume: number; from: number; mask: Uint8Array }[];
+  /** Ajustement additif de chaque rubrique, par mois (nr × 12). */
+  rubDelta: Float64Array;
+  /** Bornes imposées aux hypothèses (plafond, plancher). */
+  capMax: Float64Array;
+  capMin: Float64Array;
+  /** Facteur sur l'amplitude de chaque événement, et suppression de son surcoût. */
+  eventAmp: Float64Array;
+  eventNoCost: Uint8Array;
+  /** Choc sur le cours. */
   fxShock: { factor: number; from: number } | null;
-  /** S2 : perte forcée remplaçant E02. */
-  forcedLoss: { amp: number; from: number } | null;
-  /** S3 : choc carburant. */
-  fuelShock: { factor: number; from: number } | null;
-  /** Contrôle de monotonie C09 : +1 % sur une charge ou sur le cours. */
-  bump: Bump | null;
+  /** Événements forcés par un stress test : amplitude et mois de départ, à la place du tirage. */
+  forced: ({ amp: number; from: number } | null)[];
+  /** Postes en hausse à partir d'un mois. */
+  posteShocks: { p: number; factor: number; from: number }[];
+  /** Volumes en baisse à partir d'un mois, sur des BU. */
+  volShocks: { factor: number; from: number; mask: Uint8Array }[];
+  /** Contrôle de monotonie C09 : +1 % sur une rubrique de charge, ou sur le cours. */
+  bump: number;
+  bumpFx: boolean;
 }
 
-export function neutralEffects(): Effects {
+export function neutralEffects(m: Model): Effects {
   return {
-    hedge: null, price: null, fgDelta: new Float64Array(12), h09Cap: null,
-    e03AmpFactor: 1, e03NoCost: false, fxShock: null, forcedLoss: null, fuelShock: null, bump: null,
+    hedge: null, prices: [], rubDelta: new Float64Array(m.nr * 12),
+    capMax: new Float64Array(m.nh).fill(Infinity), capMin: new Float64Array(m.nh).fill(-Infinity),
+    eventAmp: new Float64Array(m.ne).fill(1), eventNoCost: new Uint8Array(m.ne),
+    fxShock: null, forced: new Array(m.ne).fill(null), posteShocks: [], volShocks: [], bump: -1, bumpFx: false,
   };
 }
 
@@ -42,48 +46,87 @@ export function leverMissingField(l: LeverDef): string | null {
   return null;
 }
 
-export function buildEffects(active: readonly CaseCode[], levers: LeverDef[], stress: StressDef[]): Effects {
-  const e = neutralEffects();
+export function buildEffects(m: Model, active: readonly CaseCode[], levers: LeverDef[], stress: StressDef[]): Effects {
+  const e = neutralEffects(m);
+  const b = m.budget;
   for (const code of active) {
     const l = levers.find((x) => x.code === code);
     if (l) {
       if (leverMissingField(l)) continue;
       const from = l.mois! - 1;
       const p = l.params;
-      switch (l.code) {
-        case 'L1':
+      switch (l.type) {
+        case 'couverture':
           e.hedge = { part: p.part, cours: p.cours };
           break;
-        case 'L2':
-          e.price = { factor: 1 + p.hausse, volume: 1 + p.hausse * p.elasticite, from, bus: [1, 2] };
+        case 'prix':
+          e.prices.push({ factor: 1 + p.hausse, volume: 1 + p.hausse * p.elasticite, from, mask: buMask(b, l.portee) });
           break;
-        case 'L3':
-          for (let t = from; t < 12; t++) e.fgDelta[t] -= p.economieAnnuelle / 12;
-          e.fgDelta[0] += l.cout!;
+        case 'montant': {
+          const r = m.rubIndex.get(l.portee.rubrique ?? '');
+          if (r === undefined) break;
+          for (let t = from; t < 12; t++) e.rubDelta[r * 12 + t] += p.variationAnnuelle / 12;
+          // Le coût unique pèse toujours sur l'EBITDA : en plus sur une charge, en moins sur un produit.
+          e.rubDelta[r * 12] -= m.rubSign[r] * l.cout!;
           break;
-        case 'L4':
-          e.h09Cap = p.plafond;
+        }
+        case 'plafond': {
+          const j = m.hypIndex.get(l.portee.hypothese ?? '');
+          if (j === undefined) break;
+          if (Number.isFinite(p.plafond)) e.capMax[j] = Math.min(e.capMax[j], p.plafond);
+          if (Number.isFinite(p.plancher)) e.capMin[j] = Math.max(e.capMin[j], p.plancher);
           break;
-        case 'L5':
-          e.e03AmpFactor = 1 - p.reduction;
-          e.e03NoCost = true;
-          for (let t = 0; t < 12; t++) e.fgDelta[t] += p.coutAnnuel / 12;
+        }
+        case 'attenuation': {
+          const k = m.eventIndex.get(l.portee.evenement ?? '');
+          if (k !== undefined) {
+            e.eventAmp[k] *= 1 - p.reduction;
+            e.eventNoCost[k] = 1;
+          }
+          const r = m.rubIndex.get(l.portee.rubrique ?? '');
+          if (r !== undefined) for (let t = 0; t < 12; t++) e.rubDelta[r * 12 + t] -= (m.rubSign[r] * p.coutAnnuel) / 12;
           break;
+        }
       }
       continue;
     }
     const s = stress.find((x) => x.code === code);
     if (!s) continue;
     const from = s.mois - 1;
-    if (s.code === 'S1') e.fxShock = { factor: 1 + s.params.choc, from };
-    if (s.code === 'S2') e.forcedLoss = { amp: s.params.choc, from };
-    if (s.code === 'S3') e.fuelShock = { factor: 1 + s.params.choc, from };
+    const choc = s.params.choc;
+    switch (s.type) {
+      case 'change':
+        e.fxShock = { factor: 1 + choc, from };
+        break;
+      case 'evenement': {
+        const k = m.eventIndex.get(s.portee.evenement ?? '');
+        if (k !== undefined) e.forced[k] = { amp: choc, from };
+        break;
+      }
+      case 'poste':
+        for (const p of postesOf(b, s.portee)) e.posteShocks.push({ p, factor: 1 + choc, from });
+        break;
+      case 'volume':
+        e.volShocks.push({ factor: 1 - choc, from, mask: buMask(b, s.portee) });
+        break;
+    }
   }
   return e;
 }
 
-/** Paquets de leviers présentés au CODIR (section 10.2) : toujours recalculés (R-LE-03). */
-export const PACKAGES: { code: string; libelle: string; leviers: CaseCode[] }[] = [
-  { code: 'A', libelle: 'Paquet A : L2 + L3', leviers: ['L2', 'L3'] },
-  { code: 'B', libelle: 'Paquet B : A + L1', leviers: ['L1', 'L2', 'L3'] },
-];
+/**
+ * Bumps du contrôle de monotonie C09 : chaque rubrique de charge budgétée, et le cours s'il y a des postes en devises.
+ * Une rubrique de charge sans montant au budget n'a rien à faire monter : elle n'est pas testée.
+ */
+export function bumps(m: Model): { label: string; rubrique: number; fx: boolean }[] {
+  const funded = new Uint8Array(m.nr);
+  for (let p = 0; p < m.np; p++) for (let t = 0; t < 12; t++) if (m.pAmt[p * 12 + t] !== 0) funded[m.pR[p]] = 1;
+  const out = m.budget.rubriques.flatMap((r, i) => (m.rubCharge[i] && funded[i] ? [{ label: r.libelle, rubrique: i, fx: false }] : []));
+  if (m.fxIndex >= 0 && Array.from(m.pDev).some((x) => x > 0)) out.push({ label: 'cours', rubrique: -1, fx: true });
+  return out;
+}
+
+/** Type d'un paquet : combinaison de stress tests si tous ses codes sont des stress, paquet de leviers sinon. */
+export function packageType(p: Paquet, stress: StressDef[]): 'paquet' | 'stress' {
+  return p.codes.length > 0 && p.codes.every((c) => stress.some((s) => s.code === c)) ? 'stress' : 'paquet';
+}

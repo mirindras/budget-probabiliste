@@ -1,7 +1,7 @@
 <script lang="ts">
   import { onMount } from 'svelte';
   import Assistant from './Assistant.svelte';
-import CodirView from './CodirView.svelte';
+  import CodirView from './CodirView.svelte';
   import Header from './Header.svelte';
   import NoteCodir from './NoteCodir.svelte';
   import HypothesesPanel from './panels/HypothesesPanel.svelte';
@@ -14,6 +14,7 @@ import CodirView from './CodirView.svelte';
   import TrajectoryTab from './tabs/TrajectoryTab.svelte';
   import { importFiles, type ImportOutcome } from './importer.svelte.ts';
   import { app } from './state.svelte.ts';
+  import { units } from './units.svelte.ts';
 
   const TABS = [
     { id: 'risque', label: 'Origine du risque' },
@@ -138,7 +139,7 @@ import CodirView from './CodirView.svelte';
 
   <footer class="small muted">
     {#if app.isAlfa}Données synthétiques : société fictive ALFA Distribution, aucune donnée d'entreprise réelle. {/if}
-    Calcul dans votre navigateur : aucune donnée ne quitte ce poste. Montants en GAr (milliards d'ariarys).
+    Calcul dans votre navigateur : aucune donnée ne quitte ce poste. Montants en {units.principale}{units.libelle !== units.principale ? ` (${units.libelle})` : ''}.
     P10 = 1 chance sur 10 de faire moins ; P90 = 1 chance sur 10 de faire mieux.
     {#if EMBEDDED}<br />Version de démonstration en ligne : l'impression de la note en PDF, les exports Excel et le lien de partage sont dans la version complète, publiée depuis le dépôt.{/if}
   </footer>

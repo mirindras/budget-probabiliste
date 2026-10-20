@@ -23,7 +23,7 @@ export function asymmetry(p10: number, p50: number, p90: number): number {
 
 /** Choix de la loi : première règle de la table 5.3 qui correspond. */
 export function chooseLaw(h: Hypothesis): LawKind {
-  if (h.depart !== undefined) return 'marche-aleatoire';
+  if (h.effet === 'change') return 'marche-aleatoire';
   if (h.min !== undefined && h.max !== undefined) return 'pert';
   if (h.p50 === null || h.p50 === undefined) return 'lognormale';
   const a = asymmetry(h.p10!, h.p50, h.p90!);
@@ -109,6 +109,7 @@ export function validateHypothesis(h: Hypothesis): string[] {
   const kind = chooseLaw(h);
   if (kind === 'marche-aleatoire') {
     if (!(h.depart! > 0)) errors.push(`${h.code} : cours de départ non positif`);
+    if (!Number.isFinite(h.derive_annuelle)) errors.push(`${h.code} : dérive annuelle absente`);
     if (!(h.volatilite_mensuelle! > 0)) errors.push(`${h.code} : volatilité non positive`);
     else if (!(h.volatilite_mensuelle! * k <= VOL_MAX)) errors.push(`${h.code} : volatilité mensuelle élargie par k supérieure à ${VOL_MAX * 100} %`);
     return errors;

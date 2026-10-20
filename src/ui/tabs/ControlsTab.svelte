@@ -1,10 +1,13 @@
 <script lang="ts">
+  import { uncoveredPostes } from '../../engine/readiness.ts';
   import { journalWorkbook, workbookBytes } from '../../io/excel.ts';
   import { download } from '../download.ts';
   import { num, pct } from '../format.ts';
   import { app } from '../state.svelte.ts';
 
   const r = $derived(app.result);
+  const left = $derived(uncoveredPostes(app.scenario, app.budget).map((c) => app.budget.postes.find((p) => p.code === c)?.libelle ?? c));
+  const certains = $derived((app.scenario.registre.postes_certains ?? []).map((c) => app.budget.postes.find((p) => p.code === c)?.libelle ?? c));
   let truth = $state<number | null>(null);
   let truthRunning = $state(false);
   async function runTruth() {
@@ -39,9 +42,9 @@
           </tbody>
         </table>
       </div>
-      <p class="small muted">Lignes non modélisées, restées au budget (R-PL-02) : aucune, toutes les lignes du P&L de gestion jusqu'à l'EBITDA sont pilotées par une hypothèse. Durée du run : {num(r.timings.total, 0)} ms dont simulation {num(r.timings.simulation, 0)} ms.</p>
+      <p class="small muted">Postes non modélisés, restés au budget (R-PL-02) : {left.length ? `${left.join(', ')}, sans hypothèse ni événement` : 'aucun, chaque poste du P&L de gestion jusqu\'à l\'EBITDA varie avec une hypothèse ou un événement'}{certains.length ? ` ; confirmés certains : ${certains.join(', ')}` : ''}. Durée du run : {num(r.timings.total, 0)} ms dont simulation {num(r.timings.simulation, 0)} ms.</p>
       <div class="truth">
-        <button onclick={runTruth} disabled={truthRunning}>Calibration sur vérité connue (TC14)</button>
+        <button onclick={runTruth} disabled={truthRunning} title="Test du moteur lui-même, sur le jeu ALFA">Calibration du moteur sur vérité connue (TC14)</button>
         {#if truth !== null}<span class="small">1 000 réalisés tirés du processus générateur : <b>{pct(truth, 1)}</b> tombent entre le P10 et le P90 du moteur nourri des vrais paramètres (attendu 77 % à 83 %).</span>{/if}
       </div>
     </section>

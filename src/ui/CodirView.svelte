@@ -1,6 +1,6 @@
 <script lang="ts">
   /**
-   * Synthèse CODIR : la réponse d'abord (probabilité, enjeu en GAr), puis le pourquoi,
+   * Synthèse CODIR : la réponse d'abord (probabilité, enjeu en montant), puis le pourquoi,
    * les décisions sur la table et les « et si ». Vocabulaire de décideur (R-RE-04),
    * termes techniques en info-bulle.
    */
@@ -8,7 +8,8 @@
   import Histogram from './charts/Histogram.svelte';
   import type { CaseResult } from '../engine/simulate.ts';
   import type { CaseCode } from '../engine/types.ts';
-  import { chances, gar, num, pct } from './format.ts';
+  import { amount, chances, material, num, pct, rate } from './format.ts';
+  import { arbitrage } from './options.ts';
   import { app } from './state.svelte.ts';
 
   const r = $derived(app.result);
@@ -28,17 +29,19 @@
 
   const ecart = (v: number) => {
     const d = v - budget;
-    if (Math.abs(d) < 0.05) return 'au niveau du budget';
-    return `${num(Math.abs(d))} GAr ${d < 0 ? 'sous' : 'au-dessus du'} budget`;
+    if (Math.abs(d) < material(budget)) return 'au niveau du budget';
+    return `${amount(Math.abs(d))} ${d < 0 ? 'sous le' : 'au-dessus du'} budget`;
   };
 
   /** Phrase en clair sur une hypothèse : sa valeur dans une mauvaise année contre la moyenne. */
   function why(code: string): string {
     const p = r?.profile.find((x) => x.code === code);
     if (!p) return '';
-    if (code === 'H06') return `Dans une mauvaise année, l'euro vaut en moyenne ${num(p.p10Year, 0)} MGA, contre ${num(p.all, 0)} sur l'ensemble des années simulées.`;
-    if (code.startsWith('E')) return `Survient dans ${pct(p.p10Year)} des mauvaises années, contre ${pct(p.all)} en moyenne.`;
-    if (code === 'H05') return `Écart de mix de ${num(p.p10Year, 2)} point dans une mauvaise année, contre ${num(p.all, 2)} en moyenne.`;
+    const h = app.scenario.registre.hypotheses.find((x) => x.code === code);
+    const fx = app.budget.change;
+    if (!h) return `Survient dans ${pct(p.p10Year)} des mauvaises années, contre ${pct(p.all)} en moyenne.`;
+    if (h.effet === 'change') return `Dans une mauvaise année, 1 ${fx?.devise ?? 'unité de devise'} vaut en moyenne ${rate(p.p10Year)} ${fx?.locale ?? ''}, contre ${rate(p.all)} sur l'ensemble des années simulées.`;
+    if (h.effet === 'marge') return `Écart de marge de ${num(p.p10Year, 2)} point dans une mauvaise année, contre ${num(p.all, 2)} en moyenne.`;
     const f = (x: number) => `${x > 1.0005 ? '+' : x < 0.9995 ? '−' : ''}${num(Math.abs(x - 1) * 100, 1)} %`;
     return `${f(p.p10Year)} par rapport au budget dans une mauvaise année, contre ${f(p.all)} en moyenne.`;
   }
@@ -48,14 +51,13 @@
   const levers = $derived(r ? r.cases.filter((c) => c.type === 'levier').sort((a, b) => b.dProb - a.dProb) : []);
   const bestCode = $derived(levers.find((c) => !c.refus && c.dProb > 0.01)?.code);
   const stress = $derived(r ? r.cases.filter((c) => c.type === 'stress') : []);
-  const optA = $derived(r?.cases.find((c) => c.code === 'A'));
-  const optB = $derived(r?.cases.find((c) => c.code === 'B'));
+  const options = $derived(r ? arbitrage(r.cases, app.scenario.paquets) : []);
 
   function tag(c: CaseResult): { texte: string; ton: string } | null {
     if (c.refus) return { texte: 'Fiche incomplète', ton: 'ko' };
     if (c.code === bestCode) return { texte: 'Meilleur gain', ton: 'ok' };
-    if (c.dEaR <= -0.1) return { texte: 'Réduit le risque', ton: 'info' };
-    if (Math.abs(c.dProb) < 0.005 && Math.abs(c.dEaR) < 0.05) return { texte: 'Sans effet notable', ton: 'neutre' };
+    if (c.dEaR <= -material(budget, 0.01) - 1e-12) return { texte: 'Réduit le risque', ton: 'info' };
+    if (Math.abs(c.dProb) < 0.005 && Math.abs(c.dEaR) < material(budget)) return { texte: 'Sans effet notable', ton: 'neutre' };
     if (c.dProb < -0.005) return { texte: 'Contre-productif', ton: 'ko' };
     if (c.dProb > 0.005) return { texte: 'Améliore les chances', ton: 'ok' };
     return null;
@@ -79,13 +81,13 @@
     <!-- 1. La réponse -->
     <section class="hero panel" aria-labelledby="reponse">
       <div class="answer">
-        <span class="eyebrow">Budget {exercice} · EBITDA de {gar(budget)}</span>
+        <span class="eyebrow">Budget {exercice} · EBITDA de {amount(budget)}</span>
         <h2 id="reponse">Le budget a <em>{pct(r.base.prob)}</em> de chances d'être atteint.</h2>
-        <p class="lead">Le résultat médian, avec autant de chances de faire mieux que moins, est de {gar(r.base.p50)}, {ecart(r.base.p50)}. Une année défavorable, à 1 chance sur 10, donnerait {gar(r.base.p10)}.</p>
+        <p class="lead">Le résultat médian, avec autant de chances de faire mieux que moins, est de {amount(r.base.p50)}, {ecart(r.base.p50)}. Une année défavorable, à 1 chance sur 10, donnerait {amount(r.base.p10)}.</p>
         <span class="pill {verdict.ton}">{verdict.texte}</span>
         {#if sel}
           <div class="sel" role="status">
-            <span>Avec {sel.codes.join(' + ')} : <b>{pct(sel.stats.prob)}</b> de chances ({delta(sel.stats.prob - r.base.prob)}), année défavorable à {gar(sel.stats.p10)}.</span>
+            <span>Avec {sel.codes.join(' + ')} : <b>{pct(sel.stats.prob)}</b> de chances ({delta(sel.stats.prob - r.base.prob)}), année défavorable à {amount(sel.stats.p10)}.</span>
             <button class="link" onclick={() => (app.scenario.actifs = [])}>Revenir au budget seul</button>
           </div>
         {/if}
@@ -101,22 +103,22 @@
     <section class="kpis" aria-label="Chiffres clés">
       <div class="kpi">
         <span class="k tip" title="P50 : 1 chance sur 2 de faire moins, 1 chance sur 2 de faire mieux">Résultat médian</span>
-        <span class="v">{gar(shown!.p50)}</span>
+        <span class="v">{amount(shown!.p50)}</span>
         <span class="s">{ecart(shown!.p50)}</span>
       </div>
       <div class="kpi">
         <span class="k tip" title="P10 : 1 chance sur 10 de faire moins">Année défavorable</span>
-        <span class="v">{gar(shown!.p10)}</span>
+        <span class="v">{amount(shown!.p10)}</span>
         <span class="s">1 chance sur 10 de faire moins</span>
       </div>
       <div class="kpi">
         <span class="k tip" title="P90 : 1 chance sur 10 de faire mieux">Année favorable</span>
-        <span class="v">{gar(shown!.p90)}</span>
+        <span class="v">{amount(shown!.p90)}</span>
         <span class="s">1 chance sur 10 de faire mieux</span>
       </div>
       <div class="kpi">
         <span class="k tip" title="P20 : atteint ou dépassé dans 8 années simulées sur 10">Objectif à 80 % de chances</span>
-        <span class="v">{gar(shown!.p20)}</span>
+        <span class="v">{amount(shown!.p20)}</span>
         <span class="s">tenu 8 années sur 10</span>
       </div>
     </section>
@@ -177,7 +179,7 @@
                 <span class="chip" class:up={c.dProb > 0.005} class:down={c.dProb < -0.005}>{delta(c.dProb)}</span>
                 <span class="small muted">de chances, contre {pct(r.base.prob)}</span>
               </div>
-              <p class="line small"><span class="muted">Année défavorable</span> <b>{gar(c.stats.p10)}</b> <span class:pos={c.dP10 > 0.05} class:neg={c.dP10 < -0.05}>({c.dP10 >= 0 ? '+' : '−'}{num(Math.abs(c.dP10))})</span></p>
+              <p class="line small"><span class="muted">Année défavorable</span> <b>{amount(c.stats.p10)}</b> <span class:pos={c.dP10 > material(budget)} class:neg={c.dP10 < -material(budget)}>({c.dP10 >= 0 ? '+' : '−'}{num(Math.abs(c.dP10))})</span></p>
               <p class="line small"><span class="muted">Coût direct</span> {l?.coutLibelle}</p>
             {/if}
             <label class="sim"><input type="checkbox" checked={active(c.code)} disabled={!!c.refus} onchange={() => app.toggleCase(c.code as CaseCode)} data-testid="case-{c.code}" /> Simuler</label>
@@ -185,23 +187,23 @@
         {/each}
       </div>
 
-      {#if optA && optB}
+      {#if options.length === 2}
         <h3 class="mt">Deux options à arbitrer</h3>
         <div class="options">
-          {#each [{ c: optA, nom: 'Option A', codes: ['L2', 'L3'], pour: 'maximise les chances de tenir le budget' }, { c: optB, nom: 'Option B', codes: ['L1', 'L2', 'L3'], pour: 'protège le bas de fourchette' }] as o (o.nom)}
+          {#each options as o (o.nom)}
             <article class="option" class:on={o.codes.length === app.scenario.actifs.length && o.codes.every((x) => active(x))}>
               <h4>{o.nom} <span class="small muted">{o.codes.join(' + ')}</span></h4>
               <p class="small">Elle {o.pour}.</p>
               <dl>
                 <dt>Chances</dt><dd><b>{pct(o.c.stats.prob)}</b> ({delta(o.c.dProb)})</dd>
-                <dt>Année défavorable</dt><dd><b>{gar(o.c.stats.p10)}</b></dd>
-                <dt>Coût direct</dt><dd>{gar(o.c.cout ?? 0, 2)}</dd>
+                <dt>Année défavorable</dt><dd><b>{amount(o.c.stats.p10)}</b></dd>
+                <dt>Coût direct</dt><dd>{amount(o.c.cout ?? 0, 2)}</dd>
               </dl>
-              <button onclick={() => setOnly(o.codes as CaseCode[])}>{o.codes.length === app.scenario.actifs.length && o.codes.every((x) => active(x)) ? 'Retirer' : 'Voir sur la distribution'}</button>
+              <button onclick={() => setOnly(o.codes)}>{o.codes.length === app.scenario.actifs.length && o.codes.every((x) => active(x)) ? 'Retirer' : 'Voir sur la distribution'}</button>
             </article>
           {/each}
         </div>
-        <p class="small muted">Le choix dépend de ce que le CODIR redoute le plus : rater le budget (option A), ou subir une mauvaise année (option B, qui remonte l'année défavorable de {num(optB.stats.p10 - optA.stats.p10)} GAr).</p>
+        <p class="small muted">Le choix dépend de ce que le CODIR redoute le plus : rater le budget ({options[0].nom.replace('Option', 'option')}), ou subir une mauvaise année ({options[1].nom.replace('Option', 'option')}, qui remonte l'année défavorable de {amount(options[1].c.stats.p10 - options[0].c.stats.p10)}).</p>
       {/if}
     </section>
 
@@ -214,12 +216,13 @@
       <div class="stress">
         {#each stress as c (c.code)}
           {@const s = stressDef(c.code)}
-          <article class="st" class:on={c.code !== 'S1+S3' && active(c.code)}>
+          {@const combo = app.scenario.paquets.find((p) => p.code === c.code)}
+          <article class="st" class:on={!!s && active(c.code)}>
             <h4>{c.libelle}</h4>
-            <p class="small muted">{s?.regle ?? 'Dépréciation brutale et choc carburant ensemble'}</p>
+            <p class="small muted">{s?.regle ?? `${combo?.codes.map((x) => stressDef(x)?.libelle ?? x).join(' et ')}, ensemble`}</p>
             <p class="big">{pct(c.stats.prob)} <span class="small muted">de chances</span></p>
-            <p class="small">Résultat médian : {gar(c.stats.p50)}</p>
-            {#if c.code !== 'S1+S3'}
+            <p class="small">Résultat médian : {amount(c.stats.p50)}</p>
+            {#if s}
               <label class="sim"><input type="checkbox" checked={active(c.code)} onchange={() => app.toggleCase(c.code as CaseCode)} data-testid="case-{c.code}" /> Simuler</label>
             {/if}
           </article>
@@ -273,7 +276,7 @@
   .two > section { display: grid; gap: 10px; align-content: start; }
   .blocks { display: flex; gap: 3px; }
   .block { display: grid; padding: 6px 9px; border-radius: 6px; color: #fff; min-width: 0; overflow: hidden; background: var(--bar); }
-  .block.macro { background: var(--bar-hit); }
+  .block:first-child { background: var(--bar-hit); }
   .block span { font-size: 12px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
   .drivers { margin: 0; padding: 0; list-style: none; display: grid; gap: 10px; counter-reset: d; }
   .drivers li { display: grid; gap: 2px; padding-left: 26px; position: relative; counter-increment: d; }

@@ -1,7 +1,11 @@
-/** Jeu ALFA préchargé : budget, registre, leviers et stress tests (annexe F). Données synthétiques. */
+/**
+ * Jeu ALFA préchargé : une configuration du modèle générique, celle d'un distributeur à trois BU (annexe F).
+ * Budget, registre, leviers, stress tests et paquets. Données synthétiques.
+ */
 import budgetJson from '../../data/alfa/budget.json' with { type: 'json' };
 import registreJson from '../../data/alfa/registre.json' with { type: 'json' };
-import type { BudgetGrid, LeverDef, Registry, Scenario, StressDef } from './types.ts';
+import { ALFA_LEVER_TYPES, ALFA_PAQUETS, ALFA_STRESS_TYPES, gridToBudget, type LegacyGrid } from './legacy.ts';
+import type { Budget, LeverDef, Paquet, Registry, Scenario, StressDef } from './types.ts';
 
 export const TOOL_VERSION: string = typeof __TOOL_VERSION__ !== 'undefined' ? __TOOL_VERSION__ : '1.0.0';
 
@@ -22,7 +26,7 @@ export interface CompactBudget {
 }
 
 /** Décline un budget annuel par BU en grille BU × mois (règles F.2). */
-export function expandBudget(b: CompactBudget, source: 'alfa' | 'import' = 'alfa'): BudgetGrid {
+export function expandGrid(b: CompactBudget, source: 'alfa' | 'import' = 'alfa'): LegacyGrid {
   const nb = b.bu.length;
   const seas = b.bu.map((name) => b.saisonnalite[name]);
   const caTot = b.ca.reduce((a, x) => a + x, 0);
@@ -55,9 +59,14 @@ export function expandBudget(b: CompactBudget, source: 'alfa' | 'import' = 'alfa
   };
 }
 
+/** Budget d'un distributeur à la manière d'ALFA, dans le modèle configurable. */
+export function expandBudget(b: CompactBudget, source: 'alfa' | 'import' = 'alfa'): Budget {
+  return gridToBudget(expandGrid(b, source));
+}
+
 export const ALFA_COMPACT: CompactBudget = budgetJson as CompactBudget;
 
-export function alfaBudget(): BudgetGrid {
+export function alfaBudget(): Budget {
   return expandBudget(ALFA_COMPACT, 'alfa');
 }
 
@@ -71,7 +80,7 @@ export function alfaRegistry(): Registry {
 
 /** Leviers L1 à L5 (section 10.2, règles exactes F.3). */
 export function alfaLevers(): LeverDef[] {
-  return [
+  const base: Omit<LeverDef, 'type' | 'portee'>[] = [
     {
       code: 'L1', libelle: 'Couverture de change',
       description: '50 % des achats en euros à cours garanti de 5 250',
@@ -91,7 +100,7 @@ export function alfaLevers(): LeverDef[] {
       description: '-0,25 GAr en année pleine, effet dès avril',
       hypotheses: 'H12', regle: 'Frais généraux diminués de 0,25 / 12 par mois à partir d\'avril ; coût unique de 0,05 en janvier',
       cout: 0.05, coutLibelle: '0,05 GAr, unique', mois: 4, proprietaire: 'DAF', faisabilite: 'Plan d\'économies identifié',
-      params: { economieAnnuelle: 0.25 },
+      params: { variationAnnuelle: -0.25 },
     },
     {
       code: 'L4', libelle: 'Plafond des tarifs transporteurs',
@@ -108,25 +117,33 @@ export function alfaLevers(): LeverDef[] {
       params: { reduction: 0.75, coutAnnuel: 0.16 },
     },
   ];
+  return base.map((l) => ({ ...l, ...structuredClone(ALFA_LEVER_TYPES[l.code]) }) as LeverDef);
 }
 
 /** Stress tests S1 à S3 (section 10.1, règles F.3). */
 export function alfaStress(): StressDef[] {
-  return [
+  const base: Omit<StressDef, 'type' | 'portee'>[] = [
     { code: 'S1', libelle: 'Dépréciation brutale de l\'ariary', regle: 'Cours +15 % au-dessus de la trajectoire simulée, dès avril', mois: 4, params: { choc: 0.15 } },
     { code: 'S2', libelle: 'Perte de deux grands comptes GMS', regle: 'Volumes Boissons et Épicerie -12 % dès avril (E02 forcé)', mois: 4, params: { choc: 0.12 } },
     { code: 'S3', libelle: 'Choc carburant', regle: 'Carburant +25 % dès avril, en plus des révisions simulées', mois: 4, params: { choc: 0.25 } },
   ];
+  return base.map((x) => ({ ...x, ...structuredClone(ALFA_STRESS_TYPES[x.code]) }) as StressDef);
+}
+
+/** Paquets A et B (section 10.2) et choc macro combiné. */
+export function alfaPaquets(): Paquet[] {
+  return structuredClone(ALFA_PAQUETS);
 }
 
 export function alfaScenario(): Scenario {
   return {
-    schemaVersion: 1,
+    schemaVersion: 2,
     toolVersion: TOOL_VERSION,
     nom: 'ALFA 2027, budget initial',
     registre: alfaRegistry(),
     leviers: alfaLevers(),
     stress: alfaStress(),
+    paquets: alfaPaquets(),
     actifs: [],
     n: 10000,
     graine: 2027,

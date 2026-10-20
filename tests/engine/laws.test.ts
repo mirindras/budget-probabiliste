@@ -6,7 +6,7 @@ import { latinHypercube } from '../../src/engine/sampling.ts';
 import { mean, normInv, percentile } from '../../src/engine/stats.ts';
 import type { Hypothesis } from '../../src/engine/types.ts';
 
-const base = { code: 'H01', libelle: 't', proprietaire: 'p', unite: 'facteur', grain: 'total', justification: 'j', statut: 'valide' } as const;
+const base = { code: 'H01', libelle: 't', famille: 'Commercial', effet: 'volume', portee: {}, proprietaire: 'p', unite: 'facteur', grain: 'total', justification: 'j', statut: 'valide' } as const;
 const h = (o: Partial<Hypothesis>): Hypothesis => ({ ...base, ...o }) as Hypothesis;
 
 /** Tirage LHS d'une loi seule. */
@@ -23,6 +23,10 @@ describe('choix de la loi (5.3)', () => {
       H01: 'split-normale', H02: 'split-normale', H03: 'normale', H04: 'split-normale', H05: 'normale', H06: 'marche-aleatoire',
       H07: 'lognormale', H08: 'split-normale', H09: 'split-normale', H10: 'split-normale', H11: 'split-normale', H12: 'split-normale',
     });
+  });
+  test('la loi du change découle de son effet, pas de son code', () => {
+    expect(chooseLaw(h({ code: 'FX_USD', effet: 'change', depart: 1.08, derive_annuelle: 0, volatilite_mensuelle: 0.01 }))).toBe('marche-aleatoire');
+    expect(chooseLaw(h({ code: 'H06', effet: 'poste', p10: 0.95, p50: 1, p90: 1.05 }))).toBe('normale');
   });
   test('indice d\'asymétrie et PERT', () => {
     expect(asymmetry(0.955, 0.995, 1.025)).toBeCloseTo(0.75, 12);
@@ -101,7 +105,7 @@ describe('conversion des fourchettes (annexe B)', () => {
     expect(b.p90).toBe(a.p90);
   });
   test('la marche aléatoire n\'a pas de quantile direct', () => {
-    expect(() => makeLaw(h({ code: 'H06', depart: 5100, derive_annuelle: 0.04, volatilite_mensuelle: 0.018 }))).toThrow();
+    expect(() => makeLaw(h({ code: 'H06', effet: 'change', depart: 5100, derive_annuelle: 0.04, volatilite_mensuelle: 0.018 }))).toThrow();
   });
 });
 
@@ -113,19 +117,19 @@ describe('règles de saisie', () => {
     expect(validateHypothesis(h({ p10: 0.95, p50: 1, p90: 1.05, justification: '' }))[0]).toMatch(/justification/);
     expect(validateHypothesis(h({ p10: 1.1, p50: null, p90: 1.05 }))[0]).toMatch(/P10 < P90/);
     expect(validateHypothesis(h({ p10: 0.95, p50: 1.3, p90: 1.05, min: 0.9, max: 1.2 }))[0]).toMatch(/PERT|minimum/);
-    expect(validateHypothesis(h({ code: 'H06', depart: -1, derive_annuelle: 0, volatilite_mensuelle: 0 }))).toHaveLength(2);
+    expect(validateHypothesis(h({ code: 'H06', effet: 'change', depart: -1, derive_annuelle: 0, volatilite_mensuelle: 0 }))).toHaveLength(2);
   });
   test('R-HY-03 : k fini, strictement positif et borné ; bornes élargies valides', () => {
     for (const k of [0, -1, Number.NaN, Number.POSITIVE_INFINITY, 3.5]) {
       expect(validateHypothesis(h({ p10: 0.95, p50: 1, p90: 1.05, k })).join(' ')).toMatch(/k doit être/);
       expect(validateHypothesis(h({ code: 'H07', p10: 0.98, p50: null, p90: 1.025, k })).join(' ')).toMatch(/k doit être/);
-      expect(validateHypothesis(h({ code: 'H06', depart: 5100, derive_annuelle: 0.04, volatilite_mensuelle: 0.018, k })).join(' ')).toMatch(/k doit être/);
+      expect(validateHypothesis(h({ code: 'H06', effet: 'change', depart: 5100, derive_annuelle: 0.04, volatilite_mensuelle: 0.018, k })).join(' ')).toMatch(/k doit être/);
     }
     expect(validateHypothesis(h({ p10: 0.95, p50: 1, p90: 1.05, k: 1.51 }))).toEqual([]);
     expect(validateHypothesis(h({ p10: 0.95, p50: 1, p90: 1.05 }))).toEqual([]);
     // P10 positif qui deviendrait négatif après élargissement
     expect(validateHypothesis(h({ p10: 0.4, p50: 1, p90: 1.2, k: 2 })).join(' ')).toMatch(/P10 élargi/);
     // volatilité du change élargie au-delà du plausible
-    expect(validateHypothesis(h({ code: 'H06', depart: 5100, derive_annuelle: 0.04, volatilite_mensuelle: 0.1, k: 3 })).join(' ')).toMatch(/volatilité mensuelle élargie/);
+    expect(validateHypothesis(h({ code: 'H06', effet: 'change', depart: 5100, derive_annuelle: 0.04, volatilite_mensuelle: 0.1, k: 3 })).join(' ')).toMatch(/volatilité mensuelle élargie/);
   });
 });

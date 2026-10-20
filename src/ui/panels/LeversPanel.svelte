@@ -1,7 +1,8 @@
 <script lang="ts">
   import LeverMap from '../charts/LeverMap.svelte';
-  import type { CaseCode } from '../../engine/types.ts';
-  import { num, pct, pts, signedMar } from '../format.ts';
+  import { packageType } from '../../engine/levers.ts';
+  import type { CaseCode, Paquet } from '../../engine/types.ts';
+  import { amount, pct, pts, signedDetail } from '../format.ts';
   import { app } from '../state.svelte.ts';
 
   const r = $derived(app.result);
@@ -11,6 +12,10 @@
     const same = codes.length === app.scenario.actifs.length && codes.every((c) => active(c));
     app.scenario.actifs = same ? [] : [...codes];
   };
+  const paquets = $derived(app.scenario.paquets.filter((p) => packageType(p, app.scenario.stress) === 'paquet'));
+  const combis = $derived(app.scenario.paquets.filter((p) => packageType(p, app.scenario.stress) === 'stress'));
+  /** « Paquet A : L2 + L3 » s'affiche « Paquet A » : la composition est rappelée à côté. */
+  const packName = (p: Paquet) => (/^paquet/i.test(p.libelle) ? p.libelle.split(' : ')[0] : p.libelle || `Paquet ${p.code}`);
 </script>
 
 <div class="levers">
@@ -18,6 +23,7 @@
   <p class="small muted">Chaque case recalcule l'année sur les mêmes tirages que la base : l'écart mesure l'action, pas le hasard.</p>
 
   <h3>Leviers de gestion</h3>
+  {#if !app.scenario.leviers.length}<p class="small muted">Aucun levier : décrivez ceux que la direction peut décider dans l'onglet Registre.</p>{/if}
   {#each app.scenario.leviers as l (l.code)}
     {@const c = caseOf(l.code)}
     <label class="case" title="{l.description}&#10;Règle : {l.regle}&#10;Coût direct : {l.coutLibelle}&#10;Propriétaire : {l.proprietaire}">
@@ -28,26 +34,26 @@
       {:else if c}
         <span class="eff">
           <b class:pos={c.dProb > 0.0005} class:neg={c.dProb < -0.0005}>{pts(c.dProb)}</b>
-          <span class="small muted">{signedMar(c.dP50)} médian</span>
-          <span class="small muted">{signedMar(c.dEaR)} risque</span>
+          <span class="small muted">{signedDetail(c.dP50)} médian</span>
+          <span class="small muted">{signedDetail(c.dEaR)} risque</span>
         </span>
       {/if}
     </label>
   {/each}
 
   <div class="packs">
-    {#each [{ code: 'A', codes: ['L2', 'L3'] }, { code: 'B', codes: ['L1', 'L2', 'L3'] }] as p (p.code)}
+    {#each paquets as p (p.code)}
       {@const c = caseOf(p.code)}
       {#if c}
-        <button class="pack" onclick={() => setPackage(p.codes as CaseCode[])}>
-          <b>Paquet {p.code}</b> <span class="small">{p.codes.join(' + ')}</span><br />
-          <span class="small">probabilité {pct(c.stats.prob)} ({pts(c.dProb)}), P10 {num(c.stats.p10)} GAr</span>
+        <button class="pack" onclick={() => setPackage(p.codes)} title={p.libelle}>
+          <b>{packName(p)}</b> <span class="small">{p.codes.join(' + ')}</span><br />
+          <span class="small">probabilité {pct(c.stats.prob)} ({pts(c.dProb)}), P10 {amount(c.stats.p10)}</span>
         </button>
       {/if}
     {/each}
   </div>
 
-  {#if r}
+  {#if r && app.scenario.leviers.length}
     <div class="map">
       <h3>Deux axes : probabilité et risque</h3>
       <LeverMap cases={r.cases} />
@@ -62,14 +68,14 @@
       <input type="checkbox" checked={active(s.code)} onchange={() => app.toggleCase(s.code)} data-testid="case-{s.code}" />
       <span class="lib"><b>{s.code}</b> {s.libelle}<span class="small muted desc">{s.regle}</span></span>
       {#if c}
-        <span class="eff"><b class="neg">{pts(c.dProb)}</b><span class="small muted">P50 {num(c.stats.p50)} GAr</span></span>
+        <span class="eff"><b class="neg">{pts(c.dProb)}</b><span class="small muted">P50 {amount(c.stats.p50)}</span></span>
       {/if}
     </label>
   {/each}
-  {#if caseOf('S1+S3')}
-    {@const c = caseOf('S1+S3')!}
-    <p class="small muted combo">S1 + S3 combinés : probabilité {pct(c.stats.prob, 1)}, P10 {num(c.stats.p10)} / P50 {num(c.stats.p50)} GAr.</p>
-  {/if}
+  {#each combis as p (p.code)}
+    {@const c = caseOf(p.code)}
+    {#if c}<p class="small muted combo">{p.codes.join(' + ')} combinés ({p.libelle}) : probabilité {pct(c.stats.prob, 1)}, P10 {amount(c.stats.p10)} / P50 {amount(c.stats.p50)}.</p>{/if}
+  {/each}
 </div>
 
 <style>

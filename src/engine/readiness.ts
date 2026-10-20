@@ -4,7 +4,10 @@
  */
 import { RISK_CATEGORIES, fullReview } from './guide.ts';
 import { asymmetry, chooseLaw, validateHypothesis } from './laws.ts';
-import type { Hypothesis, RiskEvent, Scenario } from './types.ts';
+import { postesOf } from './model.ts';
+import { referenceErrors } from './references.ts';
+import { DEFAULT_JUSTIFICATION, DEFAULT_OWNER } from './starter.ts';
+import type { Budget, Hypothesis, RiskEvent, Scenario } from './types.ts';
 
 export type Level = 'bloquant' | 'a-revoir';
 export interface Finding {
@@ -33,13 +36,15 @@ const JUSTIF_MIN = 20;
 
 function governance(x: { proprietaire: string; justification: string; statut: string }, out: Finding[]): void {
   if (!x.proprietaire?.trim()) out.push({ niveau: 'bloquant', texte: 'Propriétaire manquant : qui répond de ce chiffre ?' });
+  else if (x.proprietaire.trim() === DEFAULT_OWNER) out.push({ niveau: 'a-revoir', texte: 'Propriétaire à désigner : qui répond de ce chiffre ?' });
   const j = x.justification?.trim() ?? '';
   if (!j) out.push({ niveau: 'bloquant', texte: 'Justification manquante : sur quoi repose cette fourchette ?' });
+  else if (j === DEFAULT_JUSTIFICATION) out.push({ niveau: 'a-revoir', texte: 'Fourchette par défaut : la remplacer par celle du propriétaire, avec sa source.' });
   else if (GENERIC.test(j) || j.length < JUSTIF_MIN) out.push({ niveau: 'a-revoir', texte: 'Justification trop courte : citer la source (historique, contrat, carnet de commandes…).' });
-  if (x.statut === 'brouillon') out.push({ niveau: 'a-revoir', texte: 'Encore en brouillon : le propriétaire doit la valider.' });
+  if (x.statut === 'brouillon') out.push({ niveau: 'a-revoir', texte: 'Encore en brouillon : à faire valider par le propriétaire.' });
 }
 
-const isPoints = (h: Hypothesis) => h.unite.startsWith('points');
+const isPoints = (h: Hypothesis) => h.effet === 'marge';
 
 function hypothesisFindings(h: Hypothesis): Finding[] {
   const out: Finding[] = [];
@@ -91,19 +96,55 @@ function eventFindings(e: RiskEvent): Finding[] {
 
 const statusOf = (f: Finding[]): ReadinessItem['statut'] => (f.some((x) => x.niveau === 'bloquant') ? 'bloquant' : f.length ? 'a-revoir' : 'pret');
 
-export function readiness(s: Scenario, opts: { budgetImporte: boolean; reconciliationOk: boolean | null }): Readiness {
+/** Postes du budget qu'aucune hypothèse, aucun événement ni le change ne font varier : ils restent au budget, sans incertitude. */
+export function uncoveredPostes(s: Scenario, b: Budget): string[] {
+  const covered = new Set<number>();
+  const caRubs = new Set(b.rubriques.filter((r) => r.nature === 'ca').map((r) => r.code));
+  const volBu = new Set<string>();
+  const allBu = (p: { bu?: string[] }) => !p.bu || p.bu.length === 0;
+  for (const h of s.registre.hypotheses) {
+    if (h.effet === 'poste') for (const i of postesOf(b, h.portee)) covered.add(i);
+    if (h.effet === 'volume' || h.effet === 'prix') for (const bu of allBu(h.portee) ? b.bu : h.portee.bu!) volBu.add(bu);
+    if (h.effet === 'change') b.postes.forEach((p, i) => p.devises > 0 && covered.add(i));
+  }
+  for (const e of s.registre.evenements) {
+    if (e.effet === 'poste') for (const i of postesOf(b, e.portee)) covered.add(i);
+    if (e.effet === 'volume') for (const bu of allBu(e.portee) ? b.bu : e.portee.bu!) volBu.add(bu);
+  }
+  const certains = new Set(s.registre.postes_certains ?? []);
+  return b.postes.filter((p, i) => {
+    if (covered.has(i) || certains.has(p.code)) return false;
+    // Un poste de chiffre d'affaires, ou à assiette volume ou CA, suit les volumes et les prix de sa BU.
+    if (p.assiette !== 'fixe' || caRubs.has(p.rubrique)) return p.bu === null ? volBu.size === 0 : !volBu.has(p.bu);
+    return true;
+  }).map((p) => p.code);
+}
+
+export function readiness(s: Scenario, opts: { budgetImporte: boolean; reconciliationOk: boolean | null; budget?: Budget }): Readiness {
   const items: ReadinessItem[] = [];
   const budget: Finding[] = [];
   if (opts.reconciliationOk === false) budget.push({ niveau: 'bloquant', texte: 'L\'EBITDA recalculé ne retrouve pas l\'EBITDA publié (contrôle C01).' });
   if (!opts.budgetImporte) budget.push({ niveau: 'a-revoir', texte: 'Jeu de démonstration ALFA : importer votre budget avec le modèle BUDGET_BASE.' });
+  // Références au budget : une portée qui nomme une BU, un poste ou une rubrique absents bloque l'entrée concernée.
+  const refs = opts.budget ? referenceErrors(s, opts.budget) : [];
+  const own = new Set([...s.registre.hypotheses, ...s.registre.evenements].map((x) => x.code));
+  const refsOf = (code: string): Finding[] => refs.filter((m) => m.startsWith(`${code} : `)).map((m) => ({ niveau: 'bloquant', texte: `${m.slice(code.length + 3).replace(/^./, (c) => c.toUpperCase())}.` }));
+  for (const m of refs) if (!own.has(m.split(' : ')[0])) budget.push({ niveau: 'bloquant', texte: `${m}.` });
   items.push({ code: 'BUDGET', etape: 'budget', libelle: 'Budget de base', constats: budget, statut: statusOf(budget) });
 
   for (const h of s.registre.hypotheses) {
-    const f = hypothesisFindings(h);
+    const f = [...refsOf(h.code), ...hypothesisFindings(h)];
     items.push({ code: h.code, etape: 'hypotheses', libelle: h.libelle, constats: f, statut: statusOf(f) });
   }
+  if (opts.budget) {
+    const left = uncoveredPostes(s, opts.budget);
+    const f: Finding[] = left.length
+      ? [{ niveau: 'a-revoir', texte: `${left.length} poste${left.length > 1 ? 's' : ''} sans hypothèse, qui reste${left.length > 1 ? 'nt' : ''} au budget sans incertitude : ${left.map((c) => opts.budget!.postes.find((p) => p.code === c)?.libelle ?? c).join(', ')}. Ajouter une hypothèse, ou les confirmer certains.` }]
+      : [];
+    items.push({ code: 'POSTES', etape: 'hypotheses', libelle: 'Postes couverts par une hypothèse', constats: f, statut: statusOf(f) });
+  }
   for (const e of s.registre.evenements) {
-    const f = eventFindings(e);
+    const f = [...refsOf(e.code), ...eventFindings(e)];
     items.push({ code: e.code, etape: 'evenements', libelle: e.libelle, constats: f, statut: statusOf(f) });
   }
 
@@ -112,7 +153,12 @@ export function readiness(s: Scenario, opts: { budgetImporte: boolean; reconcili
   if (unjustified.length) corr.push({ niveau: 'a-revoir', texte: `${unjustified.length} corrélation${unjustified.length > 1 ? 's' : ''} sans justification : ${unjustified.map((c) => `${c[0]}-${c[1]}`).join(', ')}.` });
   const zeros = s.registre.correlations_rang.filter((c) => c[2] === 0);
   if (zeros.length) corr.push({ niveau: 'a-revoir', texte: `${zeros.length} corrélation${zeros.length > 1 ? 's' : ''} à 0 : la saisir ou la retirer (${zeros.map((c) => `${c[0]}-${c[1]}`).join(', ')}).` });
-  if (!s.registre.correlations_rang.some((c) => c[0] === 'H06' || c[1] === 'H06')) corr.push({ niveau: 'a-revoir', texte: 'Aucune corrélation avec le change (H06) : une dépréciation touche pourtant souvent les achats et les frais.' });
+  const fx = s.registre.hypotheses.find((h) => h.effet === 'change');
+  if (fx && !s.registre.correlations_rang.some((c) => c[0] === fx.code || c[1] === fx.code)) corr.push({ niveau: 'a-revoir', texte: `Aucune corrélation avec le change (${fx.code}) : une dépréciation touche pourtant souvent les achats et les frais.` });
+  const vols = s.registre.hypotheses.filter((h) => h.effet === 'volume');
+  if (vols.length > 1 && !s.registre.correlations_rang.some((c) => vols.some((v) => v.code === c[0]) && vols.some((v) => v.code === c[1]))) {
+    corr.push({ niveau: 'a-revoir', texte: 'Volumes des BU sans corrélation entre eux : une demande commune les fait souvent bouger ensemble.' });
+  }
   items.push({ code: 'CORR', etape: 'correlations', libelle: 'Corrélations entre hypothèses', constats: corr, statut: statusOf(corr) });
 
   const review = fullReview(s.registre.revue_risques);

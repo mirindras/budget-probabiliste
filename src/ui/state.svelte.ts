@@ -2,12 +2,16 @@
 import { alfaBudget, alfaScenario, TOOL_VERSION } from '../engine/alfa.ts';
 import type { BacktestResult } from '../engine/backtest.ts';
 import type { RunError, RunOutput } from '../engine/simulate.ts';
-import type { Actuals, BudgetGrid, CaseCode, Scenario } from '../engine/types.ts';
+import { migrateBudget, migrateScenario } from '../engine/legacy.ts';
+import { referenceErrors } from '../engine/references.ts';
+import { isBudget, isScenario } from '../engine/schema.ts';
+import { adaptScenario } from '../engine/starter.ts';
+import type { Actuals, Budget, CaseCode, Scenario } from '../engine/types.ts';
 import type { JournalEntry } from '../io/excel.ts';
 import { readScenarioFromHash } from '../io/share.ts';
-import { isScenario } from '../engine/schema.ts';
 import { clearDraft, loadDraft, saveDraft } from '../io/storage.ts';
 import { EngineClient } from './engine-client.ts';
+import { setUnits } from './units.svelte.ts';
 
 export interface SyntheticSummary {
   realise2027: Actuals;
@@ -18,8 +22,8 @@ export interface SyntheticSummary {
 }
 
 interface Draft {
-  scenario: Scenario;
-  budget: BudgetGrid;
+  scenario: unknown;
+  budget: unknown;
 }
 
 const DRAFT_KEY = 'scenario';
@@ -39,7 +43,7 @@ function readVue(): 'codir' | 'analyse' {
 
 class AppState {
   scenario = $state<Scenario>(alfaScenario());
-  budget = $state<BudgetGrid>(alfaBudget());
+  budget = $state<Budget>(alfaBudget());
   result = $state<RunOutput | null>(null);
   errors = $state<string[]>([]);
   running = $state(false);
@@ -76,14 +80,16 @@ class AppState {
 
   async init() {
     const link = readScenarioFromHash(location.hash);
-    const fromLink = link?.ok ? link.scenario : null;
-    if (link && !link.ok) {
-      const more = link.errors.length > 3 ? ` (et ${link.errors.length - 3} autres)` : '';
-      this.notice = `Lien de partage invalide, scénario ALFA ouvert à la place : ${link.errors.slice(0, 3).join(' ; ')}${more}.`;
+    // Un lien porte toujours sur le budget ALFA (R-RE-07) : ses références sont contrôlées contre lui.
+    const linkErrors = link ? (link.ok ? referenceErrors(link.scenario, alfaBudget()) : link.errors) : [];
+    const fromLink = link?.ok && !linkErrors.length ? link.scenario : null;
+    if (link && linkErrors.length) {
+      const more = linkErrors.length > 3 ? ` (et ${linkErrors.length - 3} autres)` : '';
+      this.notice = `Lien de partage invalide, scénario ALFA ouvert à la place : ${linkErrors.slice(0, 3).join(' ; ')}${more}.`;
       history.replaceState(null, '', location.pathname + location.search);
     } else if (fromLink) {
       this.scenario = fromLink;
-      this.budget = alfaBudget();
+      this.setBudget(alfaBudget());
       if (fromLink.toolVersion !== TOOL_VERSION) {
         this.notice = `Ce lien a été calculé avec la version ${fromLink.toolVersion} de l'outil ; vous utilisez la version ${TOOL_VERSION}. Les chiffres peuvent différer (12.3).`;
       } else {
@@ -92,9 +98,12 @@ class AppState {
       history.replaceState(null, '', location.pathname + location.search);
     } else {
       const draft = await loadDraft<Draft>(DRAFT_KEY);
-      if (draft && isScenario(draft.scenario) && draft.budget) {
-        this.scenario = draft.scenario;
-        this.budget = draft.budget;
+      // Un brouillon de la version 1 (grille BU × mois, codes fixes d'ALFA) se relit dans le modèle configurable.
+      const budget = draft ? migrateBudget(draft.budget) : null;
+      const scenario = draft && isBudget(budget) ? migrateScenario(draft.scenario, budget.bu) : null;
+      if (isBudget(budget) && isScenario(scenario)) {
+        this.scenario = scenario;
+        this.setBudget(budget);
         this.notice = 'Brouillon restauré depuis votre dernière visite sur ce poste.';
       }
     }
@@ -116,7 +125,7 @@ class AppState {
 
   run() {
     const scenario = $state.snapshot(this.scenario) as Scenario;
-    const budget = $state.snapshot(this.budget) as BudgetGrid;
+    const budget = $state.snapshot(this.budget) as Budget;
     const actuals = scenario.moisClos > 0 ? (this.actuals ? ($state.snapshot(this.actuals) as Actuals) : undefined) : undefined;
     if (this.runId) this.engine.cancel(this.runId);
     const id = this.engine.lastId + 1;
@@ -180,14 +189,31 @@ class AppState {
   async resetToAlfa() {
     await clearDraft(DRAFT_KEY);
     this.scenario = alfaScenario();
-    this.budget = alfaBudget();
+    this.setBudget(alfaBudget());
     this.notice = null;
     this.backtest = null;
   }
 
-  loadScenario(s: Scenario, budget?: BudgetGrid) {
+  loadScenario(s: Scenario, budget?: Budget) {
     this.scenario = s;
-    if (budget) this.budget = budget;
+    if (budget) this.setBudget(budget);
+  }
+
+  /**
+   * Nouveau budget : le registre courant est conservé s'il en nomme bien les BU, rubriques et postes ;
+   * sinon un registre de départ le remplace (starter.ts), à compléter dans la saisie guidée.
+   */
+  loadBudget(budget: Budget): { starter: boolean } {
+    const { scenario, starter } = adaptScenario($state.snapshot(this.scenario) as Scenario, budget);
+    this.scenario = { ...scenario, nom: budget.libelle };
+    this.setBudget(budget);
+    this.backtest = null;
+    return { starter };
+  }
+
+  private setBudget(b: Budget) {
+    this.budget = b;
+    setUnits(b.unites);
   }
 
   async loadBacktest() {

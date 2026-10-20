@@ -1,6 +1,6 @@
 <script lang="ts">
   import FanChart from '../charts/FanChart.svelte';
-  import { MOIS, num, pct } from '../format.ts';
+  import { amount, MOIS, num, pct } from '../format.ts';
   import { app } from '../state.svelte.ts';
 
   const r = $derived(app.result);
@@ -9,7 +9,8 @@
     const a = app.actuals;
     if (!a || m === 0) return [];
     let c = 0;
-    return a.lignes.slice(0, m).map((l) => (c += l[7]));
+    // Chaque mois clos : les rubriques du budget dans l'ordre, puis l'EBITDA.
+    return a.lignes.slice(0, m).map((l) => (c += l[l.length - 1]));
   });
   // Budget initial : point de mi-année. Atterrissage : fin d'exercice, les mois clos n'ayant plus de dispersion.
   const focus = $derived(m > 0 ? 12 : 6);
@@ -20,7 +21,7 @@
   <div class="traj">
     <div>
       <h2>
-        {#if f && m > 0}Avec {m} mois clos, l'EBITDA de l'année est attendu entre {num(f.p10)} et {num(f.p90)} GAr, médian {num(f.p50)} pour un budget de {num(f.budget)}{:else if f}Fin {MOIS[focus - 1]}, l'EBITDA cumulé attendu est compris entre {num(f.p10)} et {num(f.p90)} GAr, médian {num(f.p50)} pour un budget de {num(f.budget)}{/if}
+        {#if f && m > 0}Avec {m} mois clos, l'EBITDA de l'année est attendu entre {num(f.p10)} et {amount(f.p90)}, médian {num(f.p50)} pour un budget de {num(f.budget)}{:else if f}Fin {MOIS[focus - 1]}, l'EBITDA cumulé attendu est compris entre {num(f.p10)} et {amount(f.p90)}, médian {num(f.p50)} pour un budget de {num(f.budget)}{/if}
       </h2>
       <p class="small muted">Éventail P10-P90 de l'EBITDA cumulé, mois par mois. Un réalisé cumulé sous la borne basse sort de l'éventail et déclenche une revue des hypothèses.</p>
       <FanChart fan={r.fan} {actual} />
@@ -33,7 +34,7 @@
           <input type="range" min="0" max="11" step="1" bind:value={app.scenario.moisClos} data-testid="mois-clos" />
         </label>
         {#if m > 0}
-          <p>Probabilité glissante : <b>{pct(r.base.prob)}</b>. Réalisé cumulé fin {MOIS[m - 1]} : {num(actual[m - 1], 2)} GAr pour un budget de {num(r.fan[m - 1].budget, 2)}.</p>
+          <p>Probabilité glissante : <b>{pct(r.base.prob)}</b>. Réalisé cumulé fin {MOIS[m - 1]} : {amount(actual[m - 1], 2)} pour un budget de {num(r.fan[m - 1].budget, 2)}.</p>
           <p class="small muted">À mesure que l'incertitude se résout, la probabilité converge vers 0 % ou 100 %. Son décrochage signale tôt un budget hors d'atteinte.</p>
         {/if}
       {:else}

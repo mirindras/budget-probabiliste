@@ -1,22 +1,25 @@
 /** M8 : backtest des budgets passés et calibration (section 11, annexe E). */
 import { computeStats } from './risk.ts';
+import { budgetMonthly, buildModel, type Model } from './model.ts';
 import { runPL } from './pl.ts';
-import { drawAll, samplingContext, seasonality, type Draws } from './sampling.ts';
+import { drawAll, type Draws } from './sampling.ts';
 import { chi2Cdf, normInv, percentileSorted, sorted } from './stats.ts';
 import { syntheticData, trueRegistry, type PastYear, type YearTruth } from './synthetic.ts';
 import { ALFA_COMPACT, expandBudget } from './alfa.ts';
-import { HYP_CODES, type HypCode, type Registry } from './types.ts';
+import type { Registry } from './types.ts';
 
 export interface Observation {
   annee: number;
   trimestre: number;
-  code: HypCode;
+  code: string;
   realise: number;
   p10: number;
   p50: number;
   p90: number;
   /** Rang du réalisé dans sa distribution simulée (PIT). */
   pit: number;
+  /** Hypothèse en points de marge : biais mesuré en points, pas en relatif. */
+  points?: boolean;
 }
 
 export interface Tests {
@@ -38,7 +41,7 @@ export interface Tests {
 
 export interface BacktestResult {
   observations: Observation[];
-  parHypothese: (Tests & { code: HypCode })[];
+  parHypothese: (Tests & { code: string })[];
   global: Tests;
   /** Score de Brier sur « budget trimestriel atteint ». */
   brier: number;
@@ -58,13 +61,17 @@ export function kFromCoverage(c: number): number {
   return 1.2815515655446004 / normInv((1 + c) / 2);
 }
 
-const VOL = ['H01', 'H02', 'H03'];
+/** BU d'une hypothèse de volume qui ne vise qu'une BU (son bruit mensuel s'y applique), -1 sinon. */
+function volumeBu(m: Model, j: number): number {
+  const h = m.hyps[j];
+  return h.effet === 'volume' && h.portee.bu?.length === 1 ? m.budget.bu.indexOf(h.portee.bu[0]) : -1;
+}
 
 /** Valeur trimestrielle d'une hypothèse : volumes avec le bruit du trimestre, change moyen du trimestre, sinon niveau annuel. */
-function quarterValue(code: HypCode, q: number, level: number, noise: ArrayLike<number> | null, seas: number[], fx: ArrayLike<number>): number {
+function quarterValue(isFx: boolean, isVol: boolean, q: number, level: number, noise: ArrayLike<number> | null, seas: ArrayLike<number>, fx: ArrayLike<number>): number {
   const ts = [3 * q, 3 * q + 1, 3 * q + 2];
-  if (code === 'H06') return (fx[ts[0]] + fx[ts[1]] + fx[ts[2]]) / 3;
-  if (VOL.includes(code) && noise) {
+  if (isFx) return (fx[ts[0]] + fx[ts[1]] + fx[ts[2]]) / 3;
+  if (isVol && noise) {
     let s = 0, w = 0;
     for (const t of ts) {
       s += seas[t] * (1 + noise[t]);
@@ -75,21 +82,23 @@ function quarterValue(code: HypCode, q: number, level: number, noise: ArrayLike<
   return level;
 }
 
-function simulatedQuarter(d: Draws, code: HypCode, q: number, seas: number[][]): Float64Array {
+function simulatedQuarter(m: Model, d: Draws, j: number, q: number): Float64Array {
   const out = new Float64Array(d.n);
-  const b = VOL.indexOf(code);
+  const b = volumeBu(m, j);
+  const isFx = j === m.fxIndex;
   for (let i = 0; i < d.n; i++) {
-    const level = code === 'H06' ? 0 : d.h[code as Exclude<HypCode, 'H06'>][i];
+    const level = isFx ? 0 : d.h[j][i];
     const noise = b >= 0 ? d.noise.subarray((i * d.nb + b) * 12, (i * d.nb + b) * 12 + 12) : null;
-    out[i] = quarterValue(code, q, level, noise, b >= 0 ? seas[b] : seas[0], d.fx.subarray(i * 12, i * 12 + 12));
+    out[i] = quarterValue(isFx, b >= 0, q, level, noise, b >= 0 ? m.seas[b] : m.seas[0], isFx ? d.fx.subarray(i * 12, i * 12 + 12) : []);
   }
   return out;
 }
 
-function realizedQuarter(y: YearTruth, code: HypCode, q: number, seas: number[][]): number {
-  const b = VOL.indexOf(code);
-  const level = code === 'H06' ? 0 : y.h[code as Exclude<HypCode, 'H06'>];
-  return quarterValue(code, q, level, b >= 0 ? y.bruit[b] : null, b >= 0 ? seas[b] : seas[0], y.cours);
+function realizedQuarter(m: Model, y: YearTruth, j: number, q: number): number {
+  const b = volumeBu(m, j);
+  const isFx = j === m.fxIndex;
+  const level = isFx ? 0 : y.h[m.hyps[j].code];
+  return quarterValue(isFx, b >= 0, q, level, b >= 0 ? y.bruit[b] : null, b >= 0 ? m.seas[b] : m.seas[0], y.cours);
 }
 
 export function tests(obs: Observation[], relative = true): Tests {
@@ -101,7 +110,7 @@ export function tests(obs: Observation[], relative = true): Tests {
   for (const o of obs) classes[Math.min(4, Math.floor(o.pit * 5))]++;
   const e = n / 5;
   const chi2 = classes.reduce((a, c) => a + (c - e) ** 2 / e, 0);
-  const rel = obs.map((o) => (relative && o.code !== 'H05' ? (o.realise - o.p50) / o.p50 : (o.realise - o.p50) / 100));
+  const rel = obs.map((o) => (relative && !o.points ? (o.realise - o.p50) / o.p50 : (o.realise - o.p50) / 100));
   const biais = percentileSorted(sorted(rel), 0.5);
   const c = inside / n;
   const kBrut = kFromCoverage(c);
@@ -131,30 +140,30 @@ export function runBacktest(n = 2000, data = syntheticData()): BacktestResult {
   const trimestres: BacktestResult['trimestres'] = [];
   let brier = 0, crpsSum = 0, absErr = 0, nq = 0;
   data.budgets.forEach((py: PastYear, k: number) => {
-    const ctx = samplingContext(py.registre);
     // R-BT-01 : registre, corrélations et données de l'époque uniquement.
-    const d = drawAll(py.registre, py.budget, { n, graine: 2024 + k }, ctx);
-    const seas = seasonality(py.budget);
-    for (const code of HYP_CODES) {
+    const m = buildModel(py.budget, py.registre);
+    const d = drawAll(m, { n, graine: 2024 + k });
+    m.hyps.forEach((h, j) => {
       for (let q = 0; q < 4; q++) {
-        const sim = sorted(simulatedQuarter(d, code, q, seas));
-        const r = realizedQuarter(py.verite, code, q, seas);
+        const sim = sorted(simulatedQuarter(m, d, j, q));
+        const r = realizedQuarter(m, py.verite, j, q);
         let below = 0;
         while (below < sim.length && sim[below] < r) below++;
         observations.push({
-          annee: py.annee, trimestre: q + 1, code, realise: r,
+          annee: py.annee, trimestre: q + 1, code: h.code, realise: r,
           p10: percentileSorted(sim, 0.1), p50: percentileSorted(sim, 0.5), p90: percentileSorted(sim, 0.9),
-          pit: below / sim.length,
+          pit: below / sim.length, points: h.effet === 'marge',
         });
       }
-    }
-    const pl = runPL(py.budget, d);
-    const bm = budgetLines(py);
+    });
+    const pl = runPL(m, d);
+    const bm = budgetMonthly(py.budget);
     for (let q = 0; q < 4; q++) {
       const x = new Float64Array(n);
       for (let i = 0; i < n; i++) for (let t = 3 * q; t < 3 * q + 3; t++) x[i] += pl.monthly[i * 12 + t];
       const bud = bm[3 * q] + bm[3 * q + 1] + bm[3 * q + 2];
-      const real = py.realise[3 * q][7] + py.realise[3 * q + 1][7] + py.realise[3 * q + 2][7];
+      const e = m.nr;
+      const real = py.realise[3 * q][e] + py.realise[3 * q + 1][e] + py.realise[3 * q + 2][e];
       const st = computeStats(x, bud - 1e-12);
       const o = real >= bud ? 1 : 0;
       brier += (st.prob - o) ** 2;
@@ -164,7 +173,8 @@ export function runBacktest(n = 2000, data = syntheticData()): BacktestResult {
       trimestres.push({ annee: py.annee, trimestre: q + 1, budget: bud, realise: real, prob: st.prob, p10: st.p10, p50: st.p50, p90: st.p90 });
     }
   });
-  const parHypothese = HYP_CODES.map((code) => ({ code, ...tests(observations.filter((o) => o.code === code)) }));
+  const codes = data.budgets.length ? data.budgets[0].registre.hypotheses.map((h) => h.code) : [];
+  const parHypothese = codes.map((code) => ({ code, ...tests(observations.filter((o) => o.code === code)) }));
   const global = tests(observations);
   brier /= nq;
   const crpsM = crpsSum / nq;
@@ -183,25 +193,13 @@ export function runBacktest(n = 2000, data = syntheticData()): BacktestResult {
   return { observations, parHypothese, global, brier, crps: crpsM, erreurDeterministe: errM, trimestres, verdicts, synthese };
 }
 
-function budgetLines(py: PastYear): number[] {
-  const b = py.budget;
-  return Array.from({ length: 12 }, (_, t) => {
-    let ca = 0, cm = 0;
-    for (let i = 0; i < b.bu.length; i++) {
-      ca += b.ca[i][t];
-      cm += b.cmImp[i][t] + b.cmLoc[i][t];
-    }
-    return ca - cm - b.carburant[t] - b.sousTraitance[t] - b.autresTransport[t] - b.masseSalariale[t] - (b.fcTauxVariable * ca + b.fcFixe[t]) - b.fraisGeneraux[t];
-  });
-}
-
 /** Applique la calibration au registre : k global, et décalage du P50 des volumes si le biais dépasse 1 % (11.2). */
 export function applyCalibration(reg: Registry, bt: BacktestResult, shiftBias = true): Registry {
   const r = structuredClone(reg);
   for (const h of r.hypotheses) {
     h.k = Math.round(bt.global.k * 100) / 100;
     const ph = bt.parHypothese.find((x) => x.code === h.code)!;
-    if (shiftBias && VOL.includes(h.code) && Math.abs(ph.biais) > 0.01 && h.p50 != null) {
+    if (shiftBias && h.effet === 'volume' && ph && Math.abs(ph.biais) > 0.01 && h.p50 != null) {
       const f = 1 + ph.biais;
       h.p10 = round4(h.p10! * f);
       h.p50 = round4(h.p50 * f);
@@ -221,10 +219,9 @@ const round4 = (x: number) => Math.round(x * 10000) / 10000;
  */
 export function knownTruthCoverage(nReal = 1000, n = 10000): number {
   const budget = expandBudget(ALFA_COMPACT);
-  const truth = trueRegistry();
-  const ctx = samplingContext(truth);
-  const real = runPL(budget, drawAll(truth, budget, { n: nReal, graine: 777, simple: true }, ctx)).annual;
-  const sim = sorted(runPL(budget, drawAll(truth, budget, { n, graine: 2027 }, ctx)).annual);
+  const m = buildModel(budget, trueRegistry());
+  const real = runPL(m, drawAll(m, { n: nReal, graine: 777, simple: true })).annual;
+  const sim = sorted(runPL(m, drawAll(m, { n, graine: 2027 })).annual);
   const p10 = percentileSorted(sim, 0.1);
   const p90 = percentileSorted(sim, 0.9);
   let k = 0;

@@ -1,5 +1,6 @@
 <script lang="ts">
-  import { num } from '../format.ts';
+  import { amount, niceStep as gridStep, num } from '../format.ts';
+  import { units } from '../units.svelte.ts';
 
   interface Props {
     base: Float64Array;
@@ -55,8 +56,8 @@
   const ticks = $derived.by(() => {
     const out: number[] = [];
     const span = bins.nb * bins.step;
-    const t = span > 12 ? 2 : span > 4 ? 1 : 0.5;
-    for (let v = Math.ceil(bins.start / t) * t; v <= bins.start + span + 1e-9; v += t) out.push(Math.round(v * 100) / 100);
+    const t = gridStep(span);
+    for (let v = Math.ceil(bins.start / t) * t; v <= bins.start + span + 1e-9; v += t) out.push(Math.round(v / t) * t);
     return out;
   });
   const yticks = $derived.by(() => {
@@ -76,11 +77,18 @@
     return d + ` L${x(bins.start + bins.nb * bins.step)},${y(0)}`;
   });
 
+  const tickLabel = (t: number) => num(t, Number.isInteger(t) ? 0 : 1);
+  /** Une graduation n'est affichée que si son libellé tient dans le cadre (environ 3,4 px par demi-caractère). */
+  const fits = (t: number) => {
+    const half = tickLabel(t).length * 3.4;
+    return x(t) - half >= 0 && x(t) + half <= W;
+  };
+
   let hover = $state<number | null>(null);
 </script>
 
 <div class="hist">
-  <svg viewBox="0 0 {W} {H}" role="img" aria-label="Distribution de l'EBITDA simulé, avec la ligne du budget à {num(budget)} GAr">
+  <svg viewBox="0 0 {W} {H}" role="img" aria-label="Distribution de l'EBITDA simulé, avec la ligne du budget à {amount(budget)}">
     {#each yticks as t (t)}
       <line x1={M.l} x2={W - M.r} y1={y(t)} y2={y(t)} class="grid" />
       <text x={M.l - 6} y={y(t) + 4} class="tick" text-anchor="end">{num(t * 100, 0)} %</text>
@@ -100,11 +108,11 @@
       <path d={overlayPath} class="overlay" />
     {/if}
     <line x1={x(budget)} x2={x(budget)} y1={M.t - 8} y2={y(0)} class="budget" />
-    <text x={x(budget) + 5} y={M.t - 1} class="budget-label">Budget {num(budget)} GAr</text>
-    {#each ticks as t (t)}
-      <text x={x(t)} y={H - M.b + 16} class="tick" text-anchor="middle">{num(t, Number.isInteger(t) ? 0 : 1)}</text>
+    <text x={x(budget) + 5} y={M.t - 1} class="budget-label">Budget {amount(budget)}</text>
+    {#each ticks.filter(fits) as t (t)}
+      <text x={x(t)} y={H - M.b + 16} class="tick" text-anchor="middle">{tickLabel(t)}</text>
     {/each}
-    <text x={(W + M.l) / 2} y={H - 4} class="axis" text-anchor="middle">EBITDA annuel simulé, en GAr</text>
+    <text x={(W + M.l) / 2} y={H - 4} class="axis" text-anchor="middle">EBITDA annuel simulé, en {units.principale}</text>
     {#if !print}
       {#each bins.base as _, i (i)}
         {@const v0 = bins.start + i * bins.step}
@@ -124,7 +132,7 @@
   {#if hover !== null && !print}
     {@const v0 = bins.start + hover * bins.step}
     <div class="tooltip" style="left: {Math.min(85, Math.max(15, (x(v0 + bins.step / 2) / W) * 100))}%">
-      <strong>{hover === 0 ? `moins de ${num(v0 + bins.step, 1)}` : `${num(v0, 1)} à ${num(v0 + bins.step, 1)}`} GAr</strong><br />
+      <strong>{hover === 0 ? `moins de ${num(v0 + bins.step, 1)}` : `${num(v0, 1)} à ${num(v0 + bins.step, 1)}`} {units.principale}</strong><br />
       {bins.raw[hover].toLocaleString('fr-FR')} itérations ({num(bins.base[hover] * 100, 1)} %)
       {#if bins.overlay}<br /><span class="sel">{overlayLabel} : {num(bins.overlay[hover] * 100, 1)} %</span>{/if}
     </div>

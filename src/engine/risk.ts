@@ -1,10 +1,9 @@
 /** M6 : indicateurs, origine du risque, profils de scénarios (section 9). */
-import { makeLaw } from './laws.ts';
 import { neutralEffects } from './levers.ts';
+import { buBudget, type Model } from './model.ts';
 import { runPL, type PLResult } from './pl.ts';
-import { fxDeterministic, p50Values, pointDraws, type Draws, type SamplingContext } from './sampling.ts';
+import { fxDeterministic, p50Values, pointDraws, type Draws } from './sampling.ts';
 import { mean, percentileSorted, ranks, pearson, sorted, std } from './stats.ts';
-import { DRIVER_CODES, HYP_CODES, type BudgetGrid, type DriverCode, type HypCode, type Registry } from './types.ts';
 
 export interface Stats {
   p10: number;
@@ -46,27 +45,41 @@ export function probAtLeast(x: ArrayLike<number>, target: number): number {
   return hit / x.length;
 }
 
-export const BLOCKS: { code: string; libelle: string; drivers: DriverCode[] }[] = [
-  { code: 'macro', libelle: 'Macroéconomie', drivers: ['H06', 'H08', 'H09', 'H10', 'H12', 'E01'] },
-  { code: 'commercial', libelle: 'Commercial', drivers: ['H01', 'H02', 'H03', 'H04', 'H05', 'H11', 'E02'] },
-  { code: 'appro', libelle: 'Approvisionnement', drivers: ['H07', 'E03'] },
-];
+/** Code court d'une famille de risque, pour l'affichage : « Macroéconomie » donne « macroeconomie ». */
+export const familyCode = (f: string): string =>
+  f.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '') || 'autre';
 
-/** Valeur représentative de chaque driver par itération (H06 : cours moyen ; événement : impact annualisé). */
-export function driverValues(d: Draws, code: DriverCode): Float64Array {
-  if (code === 'H06') return d.fxMean;
-  if (code.startsWith('H')) return d.h[code as Exclude<HypCode, 'H06'>];
-  const ev = code as 'E01' | 'E02' | 'E03';
+/** Familles de risque du registre, dans l'ordre de première apparition, avec leurs drivers. */
+export function blocks(m: Model): { code: string; libelle: string; drivers: string[] }[] {
+  const out: { code: string; libelle: string; drivers: string[] }[] = [];
+  for (const x of [...m.hyps, ...m.events]) {
+    const lib = x.famille?.trim() || 'Autres';
+    let b = out.find((y) => y.libelle === lib);
+    if (!b) out.push((b = { code: familyCode(lib), libelle: lib, drivers: [] }));
+    b.drivers.push(x.code);
+  }
+  return out;
+}
+
+/**
+ * Valeur représentative de chaque driver par itération : valeur tirée de l'hypothèse (cours moyen pour le change),
+ * impact annualisé pour un événement (amplitude × mois restants / 12, ou amplitude / 12 sur un seul mois).
+ */
+export function driverValues(m: Model, d: Draws, code: string): Float64Array {
+  const j = m.hypIndex.get(code);
+  if (j !== undefined) return d.h[j];
+  const k = m.eventIndex.get(code)!;
   const out = new Float64Array(d.n);
+  const monthly = m.evMonthly[k];
   for (let i = 0; i < d.n; i++) {
-    if (!d.occ[ev][i]) continue;
-    out[i] = ev === 'E03' ? d.amp[ev][i] : (d.amp[ev][i] * (12 - d.month[ev][i])) / 12;
+    if (!d.occ[k][i]) continue;
+    out[i] = monthly ? d.amp[k][i] / 12 : (d.amp[k][i] * (12 - d.month[k][i])) / 12;
   }
   return out;
 }
 
 export interface Contribution {
-  code: DriverCode;
+  code: string;
   /** Corrélation de rang avec l'EBITDA. */
   rho: number;
   /** Contribution relative : rho² ramené à 100 %. Classement descriptif, pas une décomposition de la variance. */
@@ -77,33 +90,33 @@ export interface Contribution {
  * Contribution relative (9.2) : carré de la corrélation de rang, ramené à 100 %.
  * Avec des hypothèses corrélées, ce n'est pas une décomposition de la variance : les parts se recouvrent.
  */
-export function contributions(d: Draws, annual: Float64Array): { items: Contribution[]; blocks: { code: string; libelle: string; part: number }[] } {
+export function contributions(m: Model, d: Draws, annual: Float64Array): { items: Contribution[]; blocks: { code: string; libelle: string; part: number }[] } {
   const re = ranks(annual);
-  const raw = DRIVER_CODES.map((code) => {
-    const rho = pearson(ranks(driverValues(d, code)), re);
-    return { code, rho, sq: rho * rho };
+  const raw = m.codes.map((code) => {
+    const rho = pearson(ranks(driverValues(m, d, code)), re);
+    return { code, rho: Number.isFinite(rho) ? rho : 0, sq: Number.isFinite(rho) ? rho * rho : 0 };
   });
   const tot = raw.reduce((a, x) => a + x.sq, 0) || 1;
   const items = raw.map((x) => ({ code: x.code, rho: x.rho, part: x.sq / tot })).sort((a, b) => b.part - a.part);
-  const blocks = BLOCKS.map((b) => ({
+  const fam = blocks(m).map((b) => ({
     code: b.code, libelle: b.libelle,
     part: items.filter((i) => b.drivers.includes(i.code)).reduce((a, x) => a + x.part, 0),
   }));
-  return { items, blocks };
+  return { items, blocks: fam };
 }
 
 export interface Effect {
-  code: DriverCode;
+  code: string;
   /** EBITDA (isolé) ou P50 conditionnel (total) côté P10 de l'hypothèse. */
   low: number;
   high: number;
 }
 
 /** Effet total : P50 de l'EBITDA quand l'hypothèse est dans les bandes P5-P15 puis P85-P95. */
-export function totalEffects(d: Draws, annual: Float64Array): Effect[] {
+export function totalEffects(m: Model, d: Draws, annual: Float64Array): Effect[] {
   const n = d.n;
-  return HYP_CODES.map((code) => {
-    const v = driverValues(d, code);
+  return m.hyps.map(({ code }) => {
+    const v = driverValues(m, d, code);
     const r = ranks(v);
     const lo: number[] = [];
     const hi: number[] = [];
@@ -121,72 +134,72 @@ export function totalEffects(d: Draws, annual: Float64Array): Effect[] {
  * change sur sa trajectoire médiane, sans bruit ni événement. Un événement est appliqué
  * à son amplitude moyenne, survenu en juillet.
  */
-export function isolatedEffects(budget: BudgetGrid, reg: Registry, ctx: SamplingContext): { base: number; effects: Effect[] } {
-  const nb = budget.bu.length;
-  const base = p50Values(ctx);
-  const fxMed = fxDeterministic(ctx);
-  const evalAt = (vals: typeof base, fx: Float64Array, ev?: 'E01' | 'E02' | 'E03') => {
-    const d = pointDraws(nb, vals, fx);
-    if (ev) {
-      const e = ctx.events[ev];
-      d.occ[ev][0] = 1;
-      d.month[ev][0] = 6;
-      d.amp[ev][0] = (e.amplitude[0] + e.amplitude[1]) / 2;
-      if (ev === 'E03' && e.surcout) d.e03Cost[0] = (e.surcout[0] + e.surcout[1]) / 2;
+export function isolatedEffects(m: Model): { base: number; effects: Effect[] } {
+  const base = p50Values(m);
+  const fxMed = fxDeterministic(m);
+  const evalAt = (vals: typeof base, fx: Float64Array, k?: number) => {
+    const d = pointDraws(m, vals, fx);
+    if (k !== undefined) {
+      const e = m.events[k];
+      d.occ[k][0] = 1;
+      d.month[k][0] = 6;
+      d.amp[k][0] = (e.amplitude[0] + e.amplitude[1]) / 2;
+      if (e.surcout) d.cost[k][0] = (e.surcout[0] + e.surcout[1]) / 2;
     }
-    return runPL(budget, d, { noise: false, events: !!ev, effects: neutralEffects() }).annual[0];
+    return runPL(m, d, { noise: false, events: k !== undefined, effects: neutralEffects(m) }).annual[0];
   };
   const b0 = evalAt(base, fxMed);
   const effects: Effect[] = [];
-  for (const code of HYP_CODES) {
-    if (code === 'H06') {
+  m.hyps.forEach((h, j) => {
+    if (j === m.fxIndex) {
       const z = 1.2815515655446004;
-      effects.push({ code, low: evalAt(base, fxDeterministic(ctx, -z)), high: evalAt(base, fxDeterministic(ctx, z)) });
-      continue;
+      effects.push({ code: h.code, low: evalAt(base, fxDeterministic(m, -z)), high: evalAt(base, fxDeterministic(m, z)) });
+      return;
     }
-    const law = makeLaw(reg.hypotheses.find((h) => h.code === code)!);
-    effects.push({ code, low: evalAt({ ...base, [code]: law.p10 }, fxMed), high: evalAt({ ...base, [code]: law.p90 }, fxMed) });
-  }
-  for (const ev of ['E01', 'E02', 'E03'] as const) effects.push({ code: ev, low: b0, high: evalAt(base, fxMed, ev) });
+    const law = m.laws[j]!;
+    effects.push({ code: h.code, low: evalAt({ ...base, [h.code]: law.p10 }, fxMed), high: evalAt({ ...base, [h.code]: law.p90 }, fxMed) });
+  });
+  m.events.forEach((ev, k) => effects.push({ code: ev.code, low: b0, high: evalAt(base, fxMed, k) }));
   return { base: b0, effects };
 }
 
 export interface EventEffect {
-  code: 'E01' | 'E02' | 'E03';
+  code: string;
   freq: number;
   p50If: number;
   p50Else: number;
 }
 
-export function eventEffects(d: Draws, annual: Float64Array): EventEffect[] {
-  return (['E01', 'E02', 'E03'] as const).map((code) => {
+export function eventEffects(m: Model, d: Draws, annual: Float64Array): EventEffect[] {
+  return m.events.map(({ code }, k) => {
     const yes: number[] = [];
     const no: number[] = [];
-    for (let i = 0; i < d.n; i++) (d.occ[code][i] ? yes : no).push(annual[i]);
+    for (let i = 0; i < d.n; i++) (d.occ[k][i] ? yes : no).push(annual[i]);
     return {
       code, freq: yes.length / d.n,
       p50If: yes.length ? percentileSorted(sorted(yes), 0.5) : NaN,
-      p50Else: percentileSorted(sorted(no), 0.5),
+      p50Else: no.length ? percentileSorted(sorted(no), 0.5) : NaN,
     };
   });
 }
 
 export interface ProfileRow {
-  code: DriverCode;
+  code: string;
   /** Moyenne sur les itérations entre P5 et P15 de l'EBITDA. */
   p10Year: number;
   all: number;
 }
 
 /** Profil de l'année P10 : moyenne des hypothèses sur les itérations entre P5 et P15 (9.3). */
-export function scenarioProfile(d: Draws, annual: Float64Array, lo = 0.05, hi = 0.15): ProfileRow[] {
+export function scenarioProfile(m: Model, d: Draws, annual: Float64Array, lo = 0.05, hi = 0.15): ProfileRow[] {
   const s = sorted(annual);
   const a = percentileSorted(s, lo);
   const b = percentileSorted(s, hi);
   const sel: number[] = [];
   for (let i = 0; i < d.n; i++) if (annual[i] >= a && annual[i] <= b) sel.push(i);
-  return DRIVER_CODES.map((code) => {
-    const v = code.startsWith('E') ? d.occ[code as 'E01'] : driverValues(d, code);
+  return m.codes.map((code) => {
+    const k = m.eventIndex.get(code);
+    const v = k !== undefined ? d.occ[k] : driverValues(m, d, code);
     let s1 = 0;
     for (const i of sel) s1 += v[i];
     return { code, p10Year: s1 / sel.length, all: mean(v) };
@@ -243,16 +256,15 @@ export interface BuStats {
   prob: number;
 }
 
-/** Marge brute par BU (R-RI-04). */
-export function byBu(pl: PLResult, budget: BudgetGrid): BuStats[] {
-  const nb = budget.bu.length;
-  return budget.bu.map((bu, b) => {
+/** Marge par BU : somme signée des postes de la BU (R-RI-04). */
+export function byBu(m: Model, pl: PLResult): BuStats[] {
+  const nb = m.nb;
+  const bud = buBudget(m.budget);
+  return m.budget.bu.map((bu, b) => {
     const x = new Float64Array(pl.n);
     for (let i = 0; i < pl.n; i++) x[i] = pl.buMargin![i * nb + b];
-    let bud = 0;
-    for (let t = 0; t < 12; t++) bud += budget.ca[b][t] - budget.cmImp[b][t] - budget.cmLoc[b][t];
     const s = sorted(x);
-    return { bu, budget: bud, p10: percentileSorted(s, 0.1), p50: percentileSorted(s, 0.5), p90: percentileSorted(s, 0.9), prob: probAtLeast(x, bud - 1e-9) };
+    return { bu, budget: bud[b], p10: percentileSorted(s, 0.1), p50: percentileSorted(s, 0.5), p90: percentileSorted(s, 0.9), prob: probAtLeast(x, bud[b] - 1e-9) };
   });
 }
 

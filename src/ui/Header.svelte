@@ -1,6 +1,6 @@
 <script lang="ts">
   import { TOOL_VERSION } from '../engine/alfa.ts';
-  import { budgetTemplate, registryWorkbook, scenarioWorkbook, workbookBytes } from '../io/excel.ts';
+  import { budgetTemplate, legacyBudgetTemplate, registryWorkbook, scenarioWorkbook, workbookBytes } from '../io/excel.ts';
   import { encodeScenario, LINK_LIMITS, shareUrl } from '../io/share.ts';
   import { download } from './download.ts';
   import { importFiles, type ImportOutcome } from './importer.svelte.ts';
@@ -11,7 +11,7 @@
   const EMBEDDED = import.meta.env.VITE_HOST === 'artifact';
   let menu = $state(false);
   let exporting = $state(false);
-  let fileInput: HTMLInputElement;
+  let fileInput = $state<HTMLInputElement>();
 
   const canPrint = $derived(!!app.result && !app.result.partial && !app.result.blocking);
 
@@ -57,12 +57,17 @@
 
   function exportRegistry() {
     menu = false;
-    download(workbookBytes(registryWorkbook($state.snapshot(app.scenario))), 'REGISTRE_HYPOTHESES.xlsx');
+    download(workbookBytes(registryWorkbook($state.snapshot(app.scenario), $state.snapshot(app.budget))), 'REGISTRE_HYPOTHESES.xlsx');
   }
+  /** Modèles préremplis avec le budget et le registre en cours ; le format détaillé d'un distributeur en plus. */
   function templates() {
     menu = false;
-    download(workbookBytes(budgetTemplate()), 'BUDGET_BASE.xlsx');
-    setTimeout(() => download(workbookBytes(registryWorkbook($state.snapshot(app.scenario))), 'REGISTRE_HYPOTHESES.xlsx'), 300);
+    download(workbookBytes(budgetTemplate($state.snapshot(app.budget))), 'BUDGET_BASE.xlsx');
+    setTimeout(() => download(workbookBytes(registryWorkbook($state.snapshot(app.scenario), $state.snapshot(app.budget))), 'REGISTRE_HYPOTHESES.xlsx'), 300);
+  }
+  function legacyTemplate() {
+    menu = false;
+    download(workbookBytes(legacyBudgetTemplate()), 'BUDGET_BASE_DETAILLE.xlsx');
   }
   async function picked(e: Event) {
     const input = e.currentTarget as HTMLInputElement;
@@ -86,11 +91,12 @@
       <button onclick={() => (menu = !menu)} aria-expanded={menu} disabled={exporting} data-testid="fichiers">{exporting ? 'Export…' : 'Fichiers ▾'}</button>
       {#if menu}
         <div class="menu" role="menu">
-          <button role="menuitem" onclick={() => { menu = false; fileInput.click(); }} data-testid="importer">Importer un budget ou un registre (Excel, CSV)</button>
+          <button role="menuitem" onclick={() => { menu = false; fileInput?.click(); }} data-testid="importer">Importer un budget ou un registre (Excel, CSV)</button>
           {#if !EMBEDDED}
             <button role="menuitem" onclick={exportResults} disabled={!app.result || app.result.partial}>Exporter les résultats (Excel, schéma en étoile)</button>
             <button role="menuitem" onclick={exportRegistry}>Exporter le registre (Excel, réimportable)</button>
-            <button role="menuitem" onclick={templates}>Télécharger les modèles Excel à remplir</button>
+            <button role="menuitem" onclick={templates}>Télécharger les modèles Excel à remplir (budget et registre)</button>
+            <button role="menuitem" onclick={legacyTemplate}>Modèle détaillé d'un distributeur (ventes par canal et famille)</button>
             {#if !app.isAlfa}<button role="menuitem" onclick={share}>Exporter le scénario complet (Excel)</button>{/if}
           {/if}
           <button role="menuitem" onclick={() => { menu = false; void app.resetToAlfa(); }}>Revenir au jeu de démonstration ALFA</button>

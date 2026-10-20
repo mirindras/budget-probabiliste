@@ -1,10 +1,11 @@
 import { beforeAll, describe, expect, test } from 'vitest';
 import { alfaBudget, alfaLevers, alfaScenario, alfaStress } from '../../src/engine/alfa.ts';
 import { reconciliation } from '../../src/engine/controls.ts';
-import { buildEffects, leverMissingField, neutralEffects, BUMPS } from '../../src/engine/levers.ts';
-import { budgetMonthly, runPL } from '../../src/engine/pl.ts';
+import { bumps, buildEffects, leverMissingField, neutralEffects } from '../../src/engine/levers.ts';
+import { budgetMonthly, buildModel } from '../../src/engine/model.ts';
+import { runPL } from '../../src/engine/pl.ts';
 import { batchProbSE, batchQuantileSE, computeStats } from '../../src/engine/risk.ts';
-import { drawAll, fxDeterministic, p50Values, pointDraws, samplingContext } from '../../src/engine/sampling.ts';
+import { drawAll, fxDeterministic, p50Values, pointDraws } from '../../src/engine/sampling.ts';
 import { objectives, simulate, validateScenario, type RunOutput } from '../../src/engine/simulate.ts';
 import { syntheticData } from '../../src/engine/synthetic.ts';
 import type { CaseCode } from '../../src/engine/types.ts';
@@ -22,14 +23,14 @@ describe('moteur P&L déterministe (M5)', () => {
     expect(budgetMonthly(alfaBudget()).reduce((a, x) => a + x, 0)).toBeCloseTo(9.4, 9);
   });
   test('F.4 : hypothèses à leur P50, change sur sa trajectoire médiane, sans aléa : 9,197 GAr', () => {
-    const ctx = samplingContext(alfaScenario().registre);
-    const v = runPL(alfaBudget(), pointDraws(3, p50Values(ctx), fxDeterministic(ctx)), { noise: false, events: false }).annual[0];
+    const m = buildModel(alfaBudget(), alfaScenario().registre);
+    const v = runPL(m, pointDraws(m, p50Values(m), fxDeterministic(m)), { noise: false, events: false }).annual[0];
     expect(Math.abs(v - 9.197)).toBeLessThan(0.001);
   });
   test('effets déterministes des leviers (F.3)', () => {
-    const b = alfaBudget();
-    const d = pointDraws(3, { H01: 1, H02: 1, H03: 1, H04: 1, H05: 0, H07: 1, H08: 1, H09: 1.05, H10: 1, H11: 1, H12: 1 }, new Array(12).fill(5200));
-    const at = (codes: CaseCode[]) => runPL(b, d, { noise: false, events: false, effects: buildEffects(codes, alfaLevers(), alfaStress()) }).annual[0];
+    const m = buildModel(alfaBudget(), alfaScenario().registre);
+    const d = pointDraws(m, { H01: 1, H02: 1, H03: 1, H04: 1, H05: 0, H07: 1, H08: 1, H09: 1.05, H10: 1, H11: 1, H12: 1 }, new Array(12).fill(5200));
+    const at = (codes: CaseCode[]) => runPL(m, d, { noise: false, events: false, effects: buildEffects(m, codes, alfaLevers(), alfaStress()) }).annual[0];
     const ref = at([]);
     expect(at(['L3']) - ref).toBeCloseTo((0.25 / 12) * 9 - 0.05, 10);
     expect(at(['L5']) - ref).toBeCloseTo(-0.16, 10);
@@ -68,7 +69,7 @@ describe('TC16 : concordance avec le prototype (annexe F.4), N = 10 000, graine 
     }
   });
   test('section 9 : 68 % du risque dans le bloc macroéconomique, P20 à 7,3 GAr, objectifs', () => {
-    const macro = run.contributions.blocks.find((b) => b.code === 'macro')!;
+    const macro = run.contributions.blocks.find((b) => b.code === 'macroeconomie')!;
     expect(Math.abs(macro.part - 0.68)).toBeLessThan(0.02);
     expect(run.contributions.items[0].code).toBe('H06');
     expect(Math.abs(run.base.p20 - 7.3)).toBeLessThan(0.08);
@@ -108,7 +109,8 @@ describe('contrôles M9 et règles', () => {
     for (const c of run.controls) expect(c.ok, `${c.code} ${c.valeur} ${c.detail ?? ''}`).toBe(true);
     expect(run.controls.map((c) => c.code)).toEqual(['C01', 'C02', 'C03', 'C04', 'C05', 'C06', 'C07', 'C08', 'C09', 'C10', 'C11', 'C12']);
     expect(run.blocking).toBe(false);
-    expect(run.controls.find((c) => c.code === 'C09')!.valeur).toContain('70 000'.replace(' ', ' ').slice(0, 2));
+    // C09 : +1 % sur chacune des cinq rubriques de charge et sur le cours, 10 000 itérations chacun.
+    expect(run.controls.find((c) => c.code === 'C09')!.valeur).toMatch(/60\s000/);
   });
   test('TC10 : deux runs, même graine, identiques bit à bit ; autre graine, autre résultat', () => {
     const s = { ...alfaScenario(), n: 3000 };
@@ -123,21 +125,21 @@ describe('contrôles M9 et règles', () => {
     expect(a.controls).toEqual([]);
   });
   test('TC11 : aléa commun, un levier neutre donne un écart exactement nul', () => {
-    const s = alfaScenario();
-    const b = alfaBudget();
-    const d = drawAll(s.registre, b, { n: 5000, graine: 2027 });
-    const base = runPL(b, d);
+    const m = buildModel(alfaBudget(), alfaScenario().registre);
+    const d = drawAll(m, { n: 5000, graine: 2027 });
+    const base = runPL(m, d);
     const levers = alfaLevers().map((l) => (l.code === 'L4' ? { ...l, params: { plafond: 99 } } : l));
-    const neutral = runPL(b, d, { effects: buildEffects(['L4'], levers, alfaStress()) });
+    const neutral = runPL(m, d, { effects: buildEffects(m, ['L4'], levers, alfaStress()) });
     for (let i = 0; i < d.n; i++) expect(neutral.annual[i] - base.annual[i]).toBe(0);
   });
   test('TC12 : +1 % sur chaque charge et sur le cours fait baisser l\'EBITDA sur toutes les itérations', () => {
-    const s = alfaScenario();
-    const b = alfaBudget();
-    const d = drawAll(s.registre, b, { n: 3000, graine: 12 });
-    const base = runPL(b, d);
-    for (const bump of BUMPS) {
-      const r = runPL(b, d, { effects: { ...neutralEffects(), bump } });
+    const m = buildModel(alfaBudget(), alfaScenario().registre);
+    const d = drawAll(m, { n: 3000, graine: 12 });
+    const base = runPL(m, d);
+    const all = bumps(m);
+    expect(all.map((x) => x.label)).toEqual(['Coût matière', 'Transport', 'Masse salariale', 'Frais commerciaux', 'Frais généraux', 'cours']);
+    for (const bump of all) {
+      const r = runPL(m, d, { effects: { ...neutralEffects(m), bump: bump.rubrique, bumpFx: bump.fx } });
       for (let i = 0; i < d.n; i++) expect(r.annual[i]).toBeLessThan(base.annual[i]);
     }
   });
@@ -171,6 +173,7 @@ describe('contrôles M9 et règles', () => {
     expect(r.ok).toBe(false);
     if (!r.ok) expect(r.errors.length).toBe(5);
     expect(validateScenario(alfaScenario())).toEqual([]);
+    expect(validateScenario(alfaScenario(), alfaBudget())).toEqual([]);
   });
   test('C12 et C07 : registre incomplet et N trop faible rendent le run non présentable', () => {
     const s = alfaScenario();
@@ -209,7 +212,7 @@ describe('TC13 : atterrissage', () => {
     if (!r.ok) throw new Error('run');
     let cum = 0;
     for (let t = 0; t < 6; t++) {
-      cum += actuals.lignes[t][7];
+      cum += actuals.lignes[t][actuals.lignes[t].length - 1];
       expect(r.fan[t].p10).toBeCloseTo(cum, 12);
       expect(r.fan[t].p90).toBeCloseTo(cum, 12);
     }

@@ -1,8 +1,12 @@
 <script lang="ts">
+  import { EFFECT_LABEL } from '../../engine/edit.ts';
   import { asymmetry, chooseLaw } from '../../engine/laws.ts';
-  import { DRIVER_CODES, type DriverCode, type Hypothesis, type Status } from '../../engine/types.ts';
-  import { num } from '../format.ts';
+  import { driverCodes } from '../../engine/model.ts';
+  import { describePortee } from '../../engine/portee.ts';
+  import type { Hypothesis, Status } from '../../engine/types.ts';
+  import { amountDetail, num, rate } from '../format.ts';
   import { app } from '../state.svelte.ts';
+  import LeversEditor from './LeversEditor.svelte';
 
   const reg = $derived(app.scenario.registre);
   const laws = $derived(app.result?.laws ?? []);
@@ -21,21 +25,26 @@
   function narrow(h: Hypothesis): boolean {
     const w = hist[h.code];
     if (!w || app.budget.source !== 'alfa') return false;
-    if (h.code === 'H06') {
-      const l = laws.find((x) => x.code === 'H06');
+    if (h.effet === 'change') {
+      const l = laws.find((x) => x.code === h.code);
       return l ? (l.p90 - l.p10) / l.p50 < 0.5 * w : false;
     }
     const k = h.k ?? 1;
     return k * (h.p90! - h.p10!) < 0.5 * w;
   }
 
-  let newA = $state<DriverCode>('H01');
-  let newB = $state<DriverCode>('H12');
+  const codes = $derived(driverCodes(reg));
+  let newA = $state('');
+  let newB = $state('');
+  const pickA = $derived(codes.includes(newA) ? newA : (codes[0] ?? ''));
+  const pickB = $derived(codes.includes(newB) ? newB : (codes[1] ?? ''));
   function addCorr() {
-    if (newA === newB) return;
-    if (reg.correlations_rang.some(([a, b]) => (a === newA && b === newB) || (a === newB && b === newA))) return;
+    const a = pickA;
+    const b = pickB;
+    if (!a || !b || a === b) return;
+    if (reg.correlations_rang.some(([x, y]) => (x === a && y === b) || (x === b && y === a))) return;
     app.markRegistryEdited();
-    reg.correlations_rang = [...reg.correlations_rang, [newA, newB, 0, 'à justifier']];
+    reg.correlations_rang = [...reg.correlations_rang, [a, b, 0, 'à justifier']];
   }
 
   let seedOpen = $state(false);
@@ -69,7 +78,7 @@
   <section class="params">
     <div>
       <h2>Registre {reg.version} · {reg.statut === 'gele' ? 'gelé' : reg.statut === 'valide' ? 'validé' : 'brouillon'}</h2>
-      <p class="small muted">Une hypothèse, un propriétaire, une source. Toute modification après gel crée une nouvelle version (R-HY-04). Les métiers donnent les fourchettes ; la loi découle des règles de la section 5.3.</p>
+      <p class="small muted">Une hypothèse, un propriétaire, une source. Toute modification après gel crée une nouvelle version (R-HY-04). Les métiers donnent les fourchettes ; la loi découle des règles de la section 5.3. Pour ajouter ou retirer une hypothèse ou un événement, choisir ce qu'il fait varier : <button class="link" onclick={() => (app.guide = true)}>saisie guidée</button>.</p>
     </div>
     <div class="ctrls">
       <label class="small">Itérations
@@ -100,7 +109,7 @@
   <div class="table-wrap">
     <table class="small hyp">
       <thead>
-        <tr><th>Code</th><th>Hypothèse</th><th>Propriétaire</th><th>Unité</th><th class="num">P10</th><th class="num">P50</th><th class="num">P90</th><th class="num">k</th><th>Loi (A)</th><th class="num">Tirés P10 / P90</th><th>Justification</th><th>Statut</th></tr>
+        <tr><th>Code</th><th>Hypothèse</th><th>Ce qui varie</th><th>Propriétaire</th><th>Unité</th><th class="num">P10</th><th class="num">P50</th><th class="num">P90</th><th class="num">k</th><th>Loi (A)</th><th class="num">Tirés P10 / P90</th><th>Justification</th><th>Statut</th></tr>
       </thead>
       <tbody>
         {#each reg.hypotheses as h (h.code)}
@@ -108,11 +117,12 @@
           {@const l = laws.find((x) => x.code === h.code)}
           <tr class:alert={narrow(h)}>
             <td><b>{h.code}</b></td>
-            <td>{h.libelle}<br /><span class="muted">{h.grain}</span></td>
+            <td>{h.libelle}<br /><span class="muted">{h.famille}{h.grain ? ` · ${h.grain}` : ''}</span></td>
+            <td class="muted">{EFFECT_LABEL[h.effet]}<br />{h.effet === 'change' ? 'postes en devises' : describePortee(h.portee, app.budget)}</td>
             <td><input value={h.proprietaire} oninput={(e) => edit(h, 'proprietaire', e.currentTarget.value)} /></td>
             <td class="muted">{h.unite}</td>
             {#if law === 'marche-aleatoire'}
-              <td colspan="3" class="small">départ <input class="n" type="number" step="10" value={h.depart} oninput={(e) => edit(h, 'depart', +e.currentTarget.value)} />
+              <td colspan="3" class="small">départ <input class="n" type="number" step="any" value={h.depart} oninput={(e) => edit(h, 'depart', +e.currentTarget.value)} />
                 dérive <input class="n" type="number" step="0.005" value={h.derive_annuelle} oninput={(e) => edit(h, 'derive_annuelle', +e.currentTarget.value)} />
                 vol. <input class="n" type="number" step="0.001" value={h.volatilite_mensuelle} oninput={(e) => edit(h, 'volatilite_mensuelle', +e.currentTarget.value)} /></td>
             {:else}
@@ -122,7 +132,7 @@
             {/if}
             <td class="num"><input class="n k" type="number" step="0.01" min="1" max="2" value={h.k ?? 1} oninput={(e) => edit(h, 'k', +e.currentTarget.value)} /></td>
             <td>{LAW[law]}{#if h.p50 != null && law !== 'marche-aleatoire' && law !== 'pert'} <span class="muted">({num(asymmetry(h.p10!, h.p50, h.p90!), 2)})</span>{/if}</td>
-            <td class="num muted">{#if l}{num(l.emp[0], h.code === 'H06' ? 0 : 3)} / {num(l.emp[2], h.code === 'H06' ? 0 : 3)}{/if}</td>
+            <td class="num muted">{#if l}{h.effet === 'change' ? `${rate(l.emp[0])} / ${rate(l.emp[2])}` : `${num(l.emp[0], 3)} / ${num(l.emp[2], 3)}`}{/if}</td>
             <td><textarea rows="2" value={h.justification} oninput={(e) => edit(h, 'justification', e.currentTarget.value)}></textarea>
               {#if narrow(h)}<span class="warn small">Plus étroite que la moitié de l'intervalle historique équivalent : justification à faire valider par le CFO (R-HY-02).</span>{/if}</td>
             <td><select value={h.statut} onchange={(e) => edit(h, 'statut', e.currentTarget.value as Status)}>{#each STATUTS as s (s)}<option value={s}>{s}</option>{/each}</select></td>
@@ -134,13 +144,14 @@
 
   <div class="table-wrap">
     <table class="small">
-      <thead><tr><th>Code</th><th>Événement</th><th>Propriétaire</th><th class="num">Probabilité</th><th class="num">Amplitude</th><th>Surcoût</th><th>Durée</th><th>Justification</th><th>Statut</th></tr></thead>
+      <thead><tr><th>Code</th><th>Événement</th><th>Ce qu'il touche</th><th>Propriétaire</th><th class="num">Probabilité</th><th class="num">Amplitude</th><th>Surcoût</th><th>Durée</th><th>Justification</th><th>Statut</th></tr></thead>
       <tbody>
         {#each reg.evenements as e (e.code)}
           <tr>
-            <td><b>{e.code}</b></td><td>{e.libelle}<br /><span class="muted">{e.cible}</span></td><td>{e.proprietaire}</td>
+            <td><b>{e.code}</b></td><td>{e.libelle}<br /><span class="muted">{e.famille}</span></td>
+            <td class="muted">{e.sens} {e.effet === 'volume' ? 'des volumes' : 'du montant'}<br />{describePortee(e.portee, app.budget)}</td><td>{e.proprietaire}</td>
             <td class="num">{num(e.p * 100, 0)} %</td><td class="num">{num(e.amplitude[0] * 100, 0)} à {num(e.amplitude[1] * 100, 0)} %</td>
-            <td>{e.surcout ? `${num(e.surcout[0] * 1000, 0)} à ${num(e.surcout[1] * 1000, 0)} MAr` : '–'}</td>
+            <td>{e.surcout ? `${amountDetail(e.surcout[0])} à ${amountDetail(e.surcout[1])}` : '–'}</td>
             <td>{e.duree === 'fin' ? "jusqu'à fin d'exercice" : 'un mois'}</td><td>{e.justification}</td><td>{e.statut}</td>
           </tr>
         {/each}
@@ -170,31 +181,13 @@
     </div>
     <div class="add small">
       Ajouter une paire
-      <select bind:value={newA}>{#each DRIVER_CODES as c (c)}<option>{c}</option>{/each}</select>
-      <select bind:value={newB}>{#each DRIVER_CODES as c (c)}<option>{c}</option>{/each}</select>
+      <select value={pickA} onchange={(e) => (newA = e.currentTarget.value)}>{#each codes as c (c)}<option>{c}</option>{/each}</select>
+      <select value={pickB} onchange={(e) => (newB = e.currentTarget.value)}>{#each codes as c (c)}<option>{c}</option>{/each}</select>
       <button onclick={addCorr}>Ajouter</button>
     </div>
   </section>
 
-  <section>
-    <h2>Leviers : fiches</h2>
-    <div class="table-wrap">
-      <table class="small">
-        <thead><tr><th>Code</th><th>Levier</th><th>Règle de calcul</th><th class="num">Coût direct (GAr)</th><th class="num">Mois d'effet</th><th>Propriétaire</th><th>Faisabilité</th></tr></thead>
-        <tbody>
-          {#each app.scenario.leviers as l (l.code)}
-            <tr>
-              <td><b>{l.code}</b></td><td>{l.libelle}</td><td>{l.regle}</td>
-              <td class="num"><input class="n" type="number" step="0.01" value={l.cout ?? ''} oninput={(e) => (l.cout = e.currentTarget.value === '' ? null : +e.currentTarget.value)} /></td>
-              <td class="num"><input class="n" type="number" min="1" max="12" value={l.mois ?? ''} oninput={(e) => (l.mois = e.currentTarget.value === '' ? null : +e.currentTarget.value)} /></td>
-              <td>{l.proprietaire}</td><td class="muted">{l.faisabilite}</td>
-            </tr>
-          {/each}
-        </tbody>
-      </table>
-    </div>
-    <p class="small muted">Un levier sans coût direct ou sans date d'effet est refusé par l'outil, qui indique le champ manquant (R-LE-02).</p>
-  </section>
+  <LeversEditor />
 
   {#if app.seedLog.length}
     <section>

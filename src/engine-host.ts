@@ -2,15 +2,15 @@
 import { runBacktest, knownTruthCoverage } from './engine/backtest.ts';
 import { detailedRun, simulate, type RunOutput } from './engine/simulate.ts';
 import { syntheticData } from './engine/synthetic.ts';
-import type { Actuals, BudgetGrid, Scenario } from './engine/types.ts';
+import type { Actuals, Budget, Scenario } from './engine/types.ts';
 import { resultsWorkbook, workbookBytes, type JournalEntry } from './io/excel.ts';
 
 export type WorkerRequest =
-  | { type: 'run'; id: number; scenario: Scenario; budget: BudgetGrid; actuals?: Actuals }
+  | { type: 'run'; id: number; scenario: Scenario; budget: Budget; actuals?: Actuals }
   | { type: 'backtest'; id: number }
   | { type: 'synthetic'; id: number }
   | { type: 'truth'; id: number }
-  | { type: 'export'; id: number; scenario: Scenario; budget: BudgetGrid; actuals?: Actuals; run: RunOutput; journal: JournalEntry[] };
+  | { type: 'export'; id: number; scenario: Scenario; budget: Budget; actuals?: Actuals; run: RunOutput; journal: JournalEntry[] };
 
 export type Post = (msg: unknown, transfer?: Transferable[]) => void;
 
@@ -40,8 +40,8 @@ export function handle(msg: WorkerRequest, post: Post): void {
     } else if (msg.type === 'truth') {
       post({ type: 'truth', id: msg.id, output: knownTruthCoverage() });
     } else if (msg.type === 'export') {
-      const { draws, base } = detailedRun({ scenario: msg.scenario, budget: msg.budget, actuals: msg.actuals });
-      const bytes = workbookBytes(resultsWorkbook(msg.scenario, msg.budget, msg.run, draws, base, msg.journal));
+      const { model, draws, base } = detailedRun({ scenario: msg.scenario, budget: msg.budget, actuals: msg.actuals });
+      const bytes = workbookBytes(resultsWorkbook(msg.scenario, msg.budget, msg.run, model, draws, base, msg.journal));
       post({ type: 'export', id: msg.id, output: bytes }, [bytes]);
     }
   } catch (e) {

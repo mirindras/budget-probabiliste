@@ -35,11 +35,11 @@ describe('jeu synthétique (section 16)', () => {
   const s = syntheticData();
   test('R-DS-03 : marge d\'EBITDA voisine de 11 %, budgets passés réconciliés', () => {
     for (const py of s.budgets) {
-      const ca = py.budget.ca.flat().reduce((a, x) => a + x, 0);
+      const ca = py.budget.postes.filter((p) => p.rubrique === 'CA').reduce((a, p) => a + p.montants.reduce((x, y) => x + y, 0), 0);
       expect(reconciliation(py.budget) / ca).toBeCloseTo(9.4 / 85, 6);
       expect(Math.abs(reconciliation(py.budget) - py.budget.ebitdaPublie)).toBeLessThan(0.001);
     }
-    expect(pastBudget(2026, 5000).coursBudget).toBe(5000);
+    expect(pastBudget(2026, 5000).change!.coursBudget).toBe(5000);
   });
   test('historique : 72 mois de change, dernier cours connu 5 100 fin 2026, journal des événements', () => {
     expect(s.cours).toHaveLength(72);

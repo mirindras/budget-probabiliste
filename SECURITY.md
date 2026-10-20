@@ -24,8 +24,8 @@ Un fichier hors limites est refusé avec un message localisé, et aucun calcul n
 
 Le scénario voyage compressé dans l'ancre de l'URL, jamais envoyée au serveur. [src/io/share.ts](src/io/share.ts) le borne en trois temps :
 
-1. avant décompression : 16 000 caractères au plus, alphabet de lz-string seulement (un lien ALFA en fait 6 467) ; un scénario plus long n'est pas mis en lien, il part dans un fichier Excel ;
-2. avant analyse JSON : 100 000 caractères décompressés au plus (9 863 pour ALFA) ;
+1. avant décompression : 16 000 caractères au plus, alphabet de lz-string seulement (un lien ALFA en fait 7 559) ; un scénario plus long n'est pas mis en lien, il part dans un fichier Excel ;
+2. avant analyse JSON : 100 000 caractères décompressés au plus (11 724 pour ALFA) ;
 3. avant calcul : structure complète (codes attendus, types, bornes, textes de 2 000 caractères au plus), puis règles métier.
 
 Un lien refusé ouvre le jeu ALFA et affiche « Lien de partage invalide » avec la raison.

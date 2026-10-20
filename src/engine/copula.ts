@@ -1,5 +1,5 @@
 /** Corrélations de rang, conversion pour la copule gaussienne, Cholesky, correction de Higham (section 6.1, annexe D). */
-import { DRIVER_CODES, type Correlation } from './types.ts';
+import type { Correlation } from './types.ts';
 
 export type Matrix = number[][];
 
@@ -16,10 +16,10 @@ export function identity(d: number): Matrix {
   return Array.from({ length: d }, (_, i) => Array.from({ length: d }, (_, j) => (i === j ? 1 : 0)));
 }
 
-/** Matrice cible des corrélations de rang, dans l'ordre DRIVER_CODES. */
-export function rankMatrix(corr: Correlation[]): Matrix {
-  const ix = new Map<string, number>(DRIVER_CODES.map((c, i) => [c, i]));
-  const r = identity(DRIVER_CODES.length);
+/** Matrice cible des corrélations de rang, dans l'ordre des drivers du modèle. */
+export function rankMatrix(corr: Correlation[], codes: readonly string[]): Matrix {
+  const ix = new Map<string, number>(codes.map((c, i) => [c, i]));
+  const r = identity(codes.length);
   for (const [a, b, v] of corr) {
     const i = ix.get(a);
     const j = ix.get(b);
@@ -30,10 +30,10 @@ export function rankMatrix(corr: Correlation[]): Matrix {
 }
 
 /** Règle R-DE-01 : symétrie, diagonale à 1, valeurs hors diagonale entre -0,9 et +0,9. */
-export function checkMatrixRules(corr: Correlation[]): string[] {
+export function checkMatrixRules(corr: Correlation[], drivers: readonly string[]): string[] {
   const errors: string[] = [];
   const seen = new Set<string>();
-  const codes = new Set<string>(DRIVER_CODES);
+  const codes = new Set<string>(drivers);
   for (const [a, b, v] of corr) {
     if (!codes.has(a) || !codes.has(b)) errors.push(`Corrélation ${a} / ${b} : code inconnu`);
     if (a === b) errors.push(`Corrélation ${a} / ${b} : diagonale imposée à 1`);
@@ -157,8 +157,8 @@ export interface CopulaSetup {
   moved: { a: string; b: string; avant: number; apres: number }[];
 }
 
-export function setupCopula(corr: Correlation[]): CopulaSetup {
-  const rank = rankMatrix(corr);
+export function setupCopula(corr: Correlation[], codes: readonly string[]): CopulaSetup {
+  const rank = rankMatrix(corr, codes);
   const cop = rank.map((r, i) => r.map((v, j) => (i === j ? 1 : rankToCopula(v))));
   const minBefore = minEigen(cop);
   let used = cop;
@@ -172,7 +172,7 @@ export function setupCopula(corr: Correlation[]): CopulaSetup {
     for (let i = 0; i < cop.length; i++) {
       for (let j = i + 1; j < cop.length; j++) {
         const after = copulaToRank(used[i][j]);
-        if (Math.abs(after - rank[i][j]) > 0.05) moved.push({ a: DRIVER_CODES[i], b: DRIVER_CODES[j], avant: rank[i][j], apres: after });
+        if (Math.abs(after - rank[i][j]) > 0.05) moved.push({ a: codes[i], b: codes[j], avant: rank[i][j], apres: after });
       }
     }
   }

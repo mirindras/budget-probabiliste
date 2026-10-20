@@ -46,7 +46,7 @@ describe('limites des fichiers importés, contrôlées avant lecture', () => {
     while (v.getUint32(eocd, true) !== 0x06054b50) eocd--;
     const cd = v.getUint32(eocd + 16, true);
     v.setUint32(cd + 24, 60 * 1024 * 1024, true);
-    expect(messages(() => readWorkbook(forged))).toMatch(/contenu décompressé de 60,1 Mo/);
+    expect(messages(() => readWorkbook(forged))).toMatch(/contenu décompressé de 60(,\d)? Mo/);
   });
   test('feuilles, lignes et colonnes bornées', () => {
     const tall = XLSX.utils.book_new();

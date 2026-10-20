@@ -11,11 +11,11 @@ Le projet remplace l'EBITDA budgété à chiffre unique par une distribution de 
 | Projet | Budget probabiliste par simulation Monte Carlo (projet de démonstration FP&A) |
 | Document | Spécifications Fonctionnelles Détaillées (SFD) |
 | Livrable | Outil web ouvert par un simple lien : aucune installation, calcul dans le navigateur, aucune donnée transmise à un serveur |
-| Version | 1.1 : stack web retenue, soumise à validation |
+| Version | 1.2 : modèle configurable, la structure du P&L, les hypothèses, les événements, les leviers et les stress tests sont définis par l'entreprise ; ALFA devient un exemple prérempli |
 | Auteur | Mirindra SOLOFONIAINA |
 | Données | Société fictive ALFA Distribution, données synthétiques, aucune donnée d'entreprise réelle |
 | Référence de calcul | Prototype Python ALFA ; données exactes et valeurs attendues en annexe F |
-| Unités | Montants en GAr (milliards d'ariarys) et MAr (millions), probabilités au point près dans les analyses, arrondies à 5 points dans la note CODIR |
+| Unités | Montants dans l'unité du budget, GAr (milliards d'ariarys) et MAr (millions) pour ALFA ; probabilités au point près dans les analyses, arrondies à 5 points dans la note CODIR |
 | Convention Px | Px = x-ième percentile : P10 défavorable, P90 favorable |
 | Correspondance | Le tableau de la section 3 renvoie chaque module M1 à M10 à sa section détaillée |
 
@@ -40,7 +40,7 @@ Les scénarios « bas » et « haut » habituels appliquent ±10 % à toutes les
 
 ### 1.3 Périmètre
 
-- **Inclus (V1)** : P&L de gestion jusqu'à l'EBITDA, budget N+1 mensualisé sur 12 mois, 3 business units, 3 canaux, simulation, analyses de risque, leviers, backtest, restitution, le tout dans un outil web ouvert par lien.
+- **Inclus (V1)** : P&L de gestion jusqu'à l'EBITDA, budget N+1 mensualisé sur 12 mois, avec les business units, rubriques et postes propres à chaque entreprise (ALFA : 3 business units, 3 canaux), simulation, analyses de risque, leviers, backtest, restitution, le tout dans un outil web ouvert par lien.
 - **Inclus (V2, option)** : cash-flow opérationnel et BFR (DSO, DIO, DPO), probabilité de passer sous un seuil de trésorerie.
 - **Exclu** : bilan complet, fiscalité, consolidation statutaire, optimisation automatique des leviers, fixation des objectifs.
 
@@ -111,7 +111,18 @@ Trois jeux alimentent le moteur : le budget de base au grain le plus fin, l'hist
 
 ### 4.1 Budget de base
 
-Grain : mois × BU × canal × famille × ligne de P&L. Chaque ligne porte ses drivers et pas seulement un montant, car le moteur recalcule les montants à partir des drivers tirés.
+Le budget décrit la structure du P&L de gestion de l'entreprise, sans rien supposer de son métier. Le format détaillé est dans le dictionnaire des données.
+
+| Élément | Contenu | Règle |
+| --- | --- | --- |
+| Rubriques | lignes du P&L jusqu'à l'EBITDA, chacune de nature chiffre d'affaires, autre produit ou charge | codes uniques, au moins une rubrique de chiffre d'affaires |
+| Postes | une ligne par poste budgétaire : rubrique, BU (aucune pour un poste commun), assiette (fixe, volume ou chiffre d'affaires), part payée en devises, douze montants mensuels | un poste de chiffre d'affaires appartient à une BU |
+| Unité | unité des montants (k€, M€, GAr) et son millième | affichage et contrôles dans cette unité |
+| Change | devise, monnaie locale, cours budget | obligatoire dès qu'un poste a une part en devises ; une seule devise étrangère en V1 |
+
+L'EBITDA est la somme des produits moins la somme des charges. ALFA est une instance de ce modèle : sept rubriques, dix-huit postes.
+
+Exemple ALFA, saisi au grain mois × BU × canal × famille × ligne de P&L (format détaillé d'un distributeur, accepté tel quel et converti en rubriques et postes). Chaque ligne porte ses drivers et pas seulement un montant, car le moteur recalcule les montants à partir des drivers tirés.
 
 | Donnée | Unité | Grain | Règle |
 | --- | --- | --- | --- |
@@ -154,25 +165,29 @@ BU, canaux, familles, lignes de P&L, calendrier, table de passage des comptes du
 
 | Règle | Contenu |
 | --- | --- |
-| R-IN-01 | Le budget de base reproduit l'EBITDA budgété publié à 1 MAr près. |
+| R-IN-01 | Le budget de base reproduit l'EBITDA budgété publié à un millième d'unité près (1 MAr pour ALFA). |
 | R-IN-02 | Aucun volume négatif, aucun prix nul ou négatif. |
 | R-IN-03 | Chaque ligne est rattachée à une ligne de P&L et à un driver. Une ligne orpheline bloque l'import. |
 | R-IN-04 | L'historique est continu. Un mois manquant bloque l'import. |
 | R-IN-05 | L'historique est retraité à périmètre constant : familles arrêtées, clients gagnés ou perdus identifiés. |
-| R-IN-06 | Les montants sont stockés en MGA, affichés en GAr ou MAr. |
+| R-IN-06 | Les montants sont saisis et affichés dans l'unité du budget, les petits écarts en millièmes d'unité (ALFA : GAr et MAr, MGA dans le format détaillé). |
 | R-IN-07 | Le budget de base est figé par empreinte (hash) au lancement. Toute modification crée une nouvelle version. |
-| R-IN-08 | Formats acceptés : modèles Excel fournis (BUDGET\_BASE.xlsx, REGISTRE\_HYPOTHESES.xlsx) ou CSV, par glisser-déposer dans l'outil. Une erreur d'import s'affiche ligne par ligne et aucun calcul ne part tant qu'elle n'est pas corrigée. |
+| R-IN-08 | Formats acceptés : modèles Excel fournis (BUDGET\_BASE.xlsx générique ou détaillé d'un distributeur, REGISTRE\_HYPOTHESES.xlsx) ou CSV, par glisser-déposer dans l'outil. Une erreur d'import s'affiche ligne par ligne et aucun calcul ne part tant qu'elle n'est pas corrigée. |
+| R-IN-09 | Un budget importé dont le registre en cours ne nomme pas les BU, rubriques et postes reçoit un registre de départ en brouillon : une hypothèse de volume par BU, une de prix, une par rubrique de charges, le change s'il y a des postes en devises, une baisse d'activité et un choc de change en stress tests. |
 
 ## 5. Registre des hypothèses (M2)
 
-Le registre est le seul point d'entrée de l'incertitude : 12 hypothèses continues et 3 événements, chacun avec un propriétaire, une fourchette annuelle et une justification. Il se saisit dans l'écran Hypothèses de l'outil ou dans le modèle Excel importable, jamais dans le code.
+Le registre est le seul point d'entrée de l'incertitude : des hypothèses continues et des événements (12 et 3 pour ALFA), chacun avec un propriétaire, une fourchette annuelle, une justification, un effet et une portée. L'entreprise les ajoute, les modifie ou les retire dans la saisie guidée de l'outil ou dans le modèle Excel importable, jamais dans le code.
 
 ### 5.1 Fiche hypothèse
 
 | Champ | Contenu | Exemple H01 |
 | --- | --- | --- |
-| Code | H01 à H12, E01 à E03 | H01 |
+| Code | libre et unique (H01…, E01…) | H01 |
 | Libellé |  | Volume Boissons |
+| Famille | famille de risque, qui regroupe l'origine du risque | Commercial |
+| Effet | volume, prix de vente, montant d'un poste, cours de change, points de marge | volume |
+| Portée | BU, rubrique ou postes visés ; vide : toute l'entreprise | BU Boissons |
 | Propriétaire | nom et fonction | Directeur commercial Boissons |
 | Unité | facteur appliqué au budget (1,000 = budget), points, MGA pour 1 EUR | facteur |
 | Grain d'application | total, BU, canal, famille | BU Boissons, tous canaux |
@@ -182,6 +197,8 @@ Le registre est le seul point d'entrée de l'incertitude : 12 hypothèses contin
 | Justification | 3 lignes maximum, sources citées | tendance 5 ans, élasticité prix, carnet de commandes GMS |
 | Coefficient k | issu du backtest (section 11) | 1,00 avant backtest |
 | Version et statut | brouillon, validé, gelé | v2, validé |
+
+Effets : un volume agit sur le chiffre d'affaires de ses BU et sur les postes qui suivent l'activité ; un prix, sur le chiffre d'affaires ; un facteur de poste, sur les postes visés ; le change, sur la part en devises de chaque poste ; des points de marge, sur le chiffre d'affaires des BU visées, comptés dans une rubrique. Un événement touche les volumes de BU ou le montant de postes, à la baisse ou à la hausse, jusqu'à la fin de l'exercice ou le seul mois de survenance, avec un surcoût ponctuel s'il y a lieu.
 
 ### 5.2 Catalogue V1 ALFA 2027
 
@@ -246,6 +263,8 @@ Atelier de 45 minutes par propriétaire, conduit par le FP&A. L'ordre des questi
 | R-HY-04 | Toute modification après gel crée une nouvelle version du registre. Les runs antérieurs ne sont plus présentables. |
 | R-HY-05 | Un événement porte une probabilité, une amplitude, une date et une durée. Un impact sans probabilité est un stress test, pas un événement. |
 | R-HY-06 | Pas de double comptage : si E02 existe, la perte d'un grand compte est exclue de la fourchette de H01 et H02. |
+| R-HY-07 | Chaque poste du budget varie avec au moins une hypothèse ou un événement, ou il est confirmé certain ; la saisie guidée signale les autres, qui restent au budget sans incertitude. |
+| R-HY-08 | Une portée ne nomme que des BU, rubriques, postes, hypothèses ou événements existants. Retirer une entrée retire ses corrélations et les leviers ou stress tests qui la visent. |
 
 ## 6. Dépendances (M3)
 
@@ -356,7 +375,9 @@ Chaque itération recalcule le P&L mensuel en remplaçant les drivers budgétés
 
 ### 8.1 Chaîne de calcul
 
-Calcul au grain mois × BU × canal × famille, puis agrégation. S(t) est le cours EUR/MGA du mois t, Hxx le facteur tiré pour l'itération.
+Le moteur calcule au grain poste × mois. Chaque mois : le volume de chaque BU vaut le budget multiplié par ses facteurs de volume, le bruit mensuel et les événements de volume ; un poste de chiffre d'affaires suit le volume et le prix de sa BU ; un poste à assiette volume suit le volume de sa BU, ou l'indice d'activité pour un poste commun ; un poste à assiette chiffre d'affaires suit le chiffre d'affaires simulé ; puis s'appliquent les facteurs de poste, le change sur la part en devises (rapport du cours simulé au cours budget), les événements sur postes, les points de marge et les surcoûts. L'EBITDA est la somme des produits moins la somme des charges.
+
+Pour ALFA, cette chaîne reproduit les règles ci-dessous, établies au grain mois × BU × canal × famille. S(t) est le cours EUR/MGA du mois t, Hxx le facteur tiré pour l'itération.
 
 | Ligne | Règle de calcul | Hypothèses |
 | --- | --- | --- |
@@ -488,7 +509,9 @@ L'entreprise encaisse un choc carburant (-8,5 points) mais pas une dépréciatio
 
 ### 10.2 Leviers de gestion
 
-Fiche levier : code, description, hypothèses touchées, règle de calcul, coût direct, date d'effet, propriétaire, faisabilité. Tous sont évalués sur les tirages de la base.
+Fiche levier : code, type, portée, description, hypothèses touchées, règle de calcul, coût direct, date d'effet, propriétaire, faisabilité. Tous sont évalués sur les tirages de la base.
+
+Le type fixe la règle de calcul : couverture de change (part couverte, cours garanti), hausse de prix (hausse, élasticité des volumes, BU visées), montant sur une rubrique (variation annuelle à partir du mois d'effet, coût unique en janvier), plafond sur une hypothèse, atténuation d'un événement (réduction de l'impact, surcoût supprimé, coût annuel). Un stress test a aussi un type : choc de change, événement forcé, hausse de postes, baisse des volumes. Paquets de leviers et combinaisons de stress tests se composent librement ; ils sont toujours recalculés (R-LE-03). Le coût d'un levier pèse toujours sur l'EBITDA, quelle que soit la nature de la rubrique.
 
 | Levier | Règle de calcul | Coût direct | Δ P50 (GAr) | Δ probabilité (pts) | Δ EaR 90 (GAr) | Lecture |
 | --- | --- | --- | --- | --- | --- | --- |
@@ -612,9 +635,10 @@ Un écran unique, lu de gauche à droite : ce qu'on suppose, ce qui en résulte,
 | Zone | Contenu | Interaction |
 | --- | --- | --- |
 | Bandeau | nom du scénario, référence de run, boutons Partager, Importer, Exporter, Imprimer la note | une action par clic |
-| Gauche : Hypothèses | les 12 hypothèses et les 3 événements, P10 / P50 / P90 en curseurs, propriétaire et justification en info-bulle | modifier une valeur relance le calcul |
+| Gauche : Hypothèses | les hypothèses, regroupées par famille, et les événements ; P10 / P50 / P90 en curseurs, propriétaire et justification en info-bulle | modifier une valeur relance le calcul |
 | Centre : Résultat | probabilité d'atteinte en grand, distribution avec la ligne du budget, P10 / P50 / P90, EaR | survol d'une barre : fourchette et nombre d'itérations |
-| Droite : Leviers | leviers L1 à L5 et stress S1 à S3 et S1 + S3 en cases à cocher, effet en points et en MAr à côté de chaque case | cocher superpose la nouvelle distribution à la base |
+| Droite : Leviers | leviers, paquets et stress tests du scénario en cases à cocher (L1 à L5, S1 à S3 et S1 + S3 pour ALFA), effet en points et en millièmes d'unité à côté de chaque case | cocher superpose la nouvelle distribution à la base |
+| Saisie guidée | chaque entrée avec sa question, son effet et sa portée ; ajout et retrait d'hypothèses et d'événements ; rubriques et postes que rien ne fait varier ; revue des risques | une question à la fois, contrôles en direct |
 | Onglets sous l'écran | Origine du risque, Trajectoire mensuelle, Backtest, Registre, Contrôles | lecture détaillée sans quitter l'écran |
 
 Principes d'ergonomie :
@@ -667,7 +691,7 @@ L'outil doit se transmettre par un lien et répondre à la vitesse d'une convers
 | Qualité du code | Tests automatisés sur le moteur et l'interface | couverture du moteur d'au moins 90 % |
 | Documentation | README, guide utilisateur d'une page, dictionnaire des modèles Excel, SFD | livrés avec le code |
 | Compatibilité | Ordinateur pour la saisie, mobile pour la consultation et les leviers | test sur les deux formats |
-| Langue et formats | Français, montants en GAr à une décimale, virgule décimale, espace des milliers | contrôle visuel en recette |
+| Langue et formats | Français, montants dans l'unité du budget à une décimale (GAr pour ALFA), virgule décimale, espace des milliers | contrôle visuel en recette |
 | Lisibilité | Graphiques lisibles en niveaux de gris, contrastes conformes au niveau AA des WCAG | revue en recette |
 
 ## 15. Architecture technique et modèle de données
@@ -693,12 +717,12 @@ Une page web statique qui calcule dans le navigateur : on ouvre un lien, rien à
 
 ### 15.2 Modèle de données
 
-L'état de l'outil tient dans un objet JSON versionné (schemaVersion) : référence du budget, registre, corrélations, leviers, stress, N et graine. C'est cet objet qui s'enregistre dans le lien, dans le brouillon local et dans les exports.
+L'état de l'outil tient dans un objet JSON versionné (schemaVersion 2 depuis le modèle configurable ; un objet de la version 1 se relit) : registre avec effets et portées, corrélations, leviers, stress tests, paquets, N et graine. C'est cet objet qui s'enregistre dans le lien, dans le brouillon local et dans les exports ; le budget l'accompagne dans le brouillon et dans le fichier scénario, jamais dans le lien.
 
 | Objet | Contenu | Volume pour 10 000 itérations |
 | --- | --- | --- |
-| Scénario (JSON) | registre, corrélations, leviers, stress, N, graine, version de l'outil | quelques kilo-octets |
-| Budget de base | mois × BU × canal × famille × ligne | environ 4 300 lignes |
+| Scénario (JSON) | registre, corrélations, leviers, stress tests, paquets, N, graine, version de l'outil | une dizaine de kilo-octets |
+| Budget de base | rubriques, postes × 12 mois, unité, change | 18 postes pour ALFA (432 lignes de ventes dans le format détaillé) |
 | Tirages | itération × hypothèse, et × mois pour les dynamiques, en tableaux typés | environ 0,7 million de valeurs |
 | Résultats | itération × BU × mois × ligne, en tableaux typés | 3,6 millions de valeurs, environ 29 Mo en mémoire |
 | Synthèse | percentiles, probabilités, contributions, profils de scénarios | quelques milliers de valeurs |
@@ -722,11 +746,16 @@ mc-budget/
       levers.ts       leviers et stress tests (M7)
       backtest.ts     backtest et calibration (M8)
       controls.ts     contrôles C01 à C12 (M9)
+      model.ts        structure du P&L compilée : rubriques, postes, portées
+      references.ts   cohérence du budget et des portées du registre
+      starter.ts      registre de départ d'un budget importé
+      edit.ts         ajout et retrait d'entrées, de leviers, de stress tests
+      legacy.ts       relecture des formats de la version 1
     worker.ts         calcul en tâche de fond
     ui/               écran, onglets, graphiques, note imprimable (M10)
     io/               excel.ts, share.ts, storage.ts (M1, partage, brouillon)
   data/alfa/          budget.json, registre.json : ALFA préchargée
-  templates/          BUDGET_BASE.xlsx, REGISTRE_HYPOTHESES.xlsx
+  templates/          BUDGET_BASE.xlsx, BUDGET_BASE_DETAILLE.xlsx, REGISTRE_HYPOTHESES.xlsx
   tests/              engine (Vitest), e2e (Playwright)
   reference/          prototype Python et valeurs attendues (annexe F)
   docs/               SFD, guide utilisateur
@@ -850,6 +879,8 @@ Le modèle mesure l'incertitude qu'on lui décrit, rien de plus. Ses limites tie
 | Fausse précision | décisions prises sur des écarts non significatifs | arrondis de R-RI-02, intervalles de confiance, convergence |
 | Mauvaise lecture du P50 | le P50 devient un objectif revu à la baisse | principe 1 : le budget reste l'objectif, la probabilité mesure son exigence |
 | Structure du modèle erronée | drivers mal spécifiés | réconciliation C01, backtest du déterministe |
+| Budget importé mal décrit | assiette ou rubrique erronée, poste oublié par le registre | réconciliation à l'import, tableau des rubriques et de ce qui les fait varier, postes non couverts signalés (R-HY-07) |
+| Une seule devise étrangère par budget | exposition à une seconde devise non modélisée | stress test de hausse des postes concernés en V1, plusieurs devises en V2 |
 | Écarts entre l'outil web et le prototype | chiffres différents selon l'implémentation | valeurs attendues de l'annexe F, TC16 à chaque version |
 | Données d'entreprise saisies dans l'outil | fuite si elles sortent du poste | calcul local, aucun appel réseau (TC19), budget importé jamais mis dans un lien (R-RE-07) |
 | Navigateur ancien | outil lent ou inutilisable | navigateurs récents exigés, message clair à l'ouverture |
