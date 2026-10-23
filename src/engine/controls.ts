@@ -124,12 +124,11 @@ export function runControls(inp: ControlInput): ControlResult[] {
   });
   out.push({ code: 'C05', libelle: 'Quantiles empiriques contre P10 et P90 saisis', seuil: '≤ 1 point de percentile', nature: 'Bloquant', ok: e05 <= 1, valeur: `${fmt(e05, 2)} point`, detail: w05 ? `écart maximal : ${w05}` : undefined });
 
-  // C06 Reproductibilité.
+  // C06 Reproductibilité : tirages refaits à partir de la graine, P&L recalculé, comparé au run de base.
   const d2 = drawAll(m, { n, graine: scenario.graine, moisClos: scenario.moisClos, dernierCours: inp.dernierCours });
   const r2 = runPL(m, d2, { effects: inp.effects, actuals: inp.actuals });
-  const r1 = runPL(m, d, { effects: inp.effects, actuals: inp.actuals });
   let same = true;
-  for (let i = 0; i < n; i++) if (!Object.is(r1.annual[i], r2.annual[i])) same = false;
+  for (let i = 0; i < n; i++) if (!Object.is(base.annual[i], r2.annual[i])) same = false;
   out.push({ code: 'C06', libelle: 'Reproductibilité : deux runs, même graine', seuil: 'identiques bit à bit', nature: 'Bloquant', ok: same, valeur: same ? 'identiques' : 'différents' });
 
   // C07 Convergence.

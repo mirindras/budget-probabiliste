@@ -78,36 +78,33 @@ export function runPL(m: Model, d: Draws, opt: PLOptions = {}): PLResult {
   const { pR, pB, pAss, pDev, pAmt, pCA, pHyps, pEvents, caPostes, volHyps, prixHyps, volEvents, evMask, evSign, evMonthly, evSurcoutR, caBud, caBudMonth, rubSign } = m;
   let boundHits = 0;
   let ratio = 1;
-
-  /** Facteurs d'un poste : hypothèses, part en devises, événements et stress du mois. */
-  const posteFactors = (x0: number, p: number, t: number): number => {
-    let x = x0 * mult[p];
-    const dv = pDev[p];
-    if (dv > 0) x *= dv * ratio + (1 - dv);
-    const pe = pEvents[p];
-    for (let q = 0; q < pe.length; q++) {
-      const k = pe[q];
-      const f = e.forced[k];
-      if (f) {
-        if (evMonthly[k] ? t === f.from : t >= f.from) x *= 1 + evSign[k] * f.amp;
-      } else if (occ[k] && (evMonthly[k] ? t === mon[k] : t >= mon[k])) {
-        x *= 1 + evSign[k] * amp[k];
-      }
-    }
-    for (let q = 0; q < e.posteShocks.length; q++) {
-      const s = e.posteShocks[q];
-      if (s.p === p && t >= s.from) x *= s.factor;
-    }
-    return x;
-  };
+  // Boucle chaude : listes et effets lus une fois, hors des itérations.
+  const { forced, posteShocks, volShocks, prices, eventAmp, eventNoCost, capMax, capMin, rubDelta } = e;
+  const marges = m.marge;
+  /** Facteur de chaque poste pour le mois : hypothèses, part en devises, événements, stress. */
+  const fP = new Float64Array(np);
+  const devPostes = Int32Array.from({ length: np }, (_, p) => p).filter((p) => pDev[p] > 0);
+  // Couples (poste, événement) des événements qui touchent un montant, à plat.
+  const evP: number[] = [];
+  const evK: number[] = [];
+  for (let p = 0; p < np; p++) for (let q = 0; q < pEvents[p].length; q++) {
+    evP.push(p);
+    evK.push(pEvents[p][q]);
+  }
+  const nPairs = evP.length;
+  // Nature de chaque ligne : chiffre d'affaires, ou charge et produit selon leur assiette.
+  const K_CA = 0, K_FIXE = 1, K_VOL_BU = 2, K_VOL_ALL = 3, K_CA_BU = 4, K_CA_ALL = 5;
+  const kind = Uint8Array.from({ length: np }, (_, p) =>
+    pCA[p] ? K_CA : pAss[p] === ASS_VOLUME ? (pB[p] >= 0 ? K_VOL_BU : K_VOL_ALL) : pAss[p] === ASS_CA ? (pB[p] >= 0 ? K_CA_BU : K_CA_ALL) : K_FIXE);
+  const caRatio = new Float64Array(nb);
 
   for (let i = 0; i < n; i++) {
     // Valeurs de l'itération, bornées par les leviers de plafond.
     for (let j = 0; j < nh; j++) {
       if (j === m.fxIndex) continue;
       let x = d.h[j][i];
-      if (x > e.capMax[j]) x = e.capMax[j];
-      if (x < e.capMin[j]) x = e.capMin[j];
+      if (x > capMax[j]) x = capMax[j];
+      if (x < capMin[j]) x = capMin[j];
       val[j] = x;
     }
     for (let b = 0; b < nb; b++) {
@@ -127,9 +124,9 @@ export function runPL(m: Model, d: Draws, opt: PLOptions = {}): PLResult {
       mult[p] = x;
     }
     for (let k = 0; k < ne; k++) {
-      occ[k] = eventsOn && d.occ[k][i] === 1 && !e.forced[k] ? 1 : 0;
+      occ[k] = eventsOn && d.occ[k][i] === 1 && !forced[k] ? 1 : 0;
       mon[k] = d.month[k][i];
-      amp[k] = d.amp[k][i] * e.eventAmp[k];
+      amp[k] = d.amp[k][i] * eventAmp[k];
       cost[k] = d.cost[k][i];
     }
     let hit = false;
@@ -163,20 +160,20 @@ export function runPL(m: Model, d: Draws, opt: PLOptions = {}): PLResult {
           for (let q = 0; q < volEvents.length; q++) {
             const k = volEvents[q];
             if (!evMask[k][b]) continue;
-            const f = e.forced[k];
+            const f = forced[k];
             if (f) {
               if (evMonthly[k] ? t === f.from : t >= f.from) v *= 1 + evSign[k] * f.amp;
             } else if (occ[k] && (evMonthly[k] ? t === mon[k] : t >= mon[k])) {
               v *= 1 + evSign[k] * amp[k];
             }
           }
-          for (let q = 0; q < e.volShocks.length; q++) {
-            const s = e.volShocks[q];
+          for (let q = 0; q < volShocks.length; q++) {
+            const s = volShocks[q];
             if (t >= s.from && s.mask[b]) v *= s.factor;
           }
           let price = priceBase[b];
-          for (let q = 0; q < e.prices.length; q++) {
-            const pr = e.prices[q];
+          for (let q = 0; q < prices.length; q++) {
+            const pr = prices[q];
             if (t >= pr.from && pr.mask[b]) {
               price *= pr.factor;
               v *= pr.volume;
@@ -197,43 +194,63 @@ export function runPL(m: Model, d: Draws, opt: PLOptions = {}): PLResult {
           for (let b = 0; b < nb; b++) volIdx += V[b] / nb;
         }
 
+        // Facteur de chaque poste pour le mois : hypothèses, part en devises, événements sur montants, stress.
+        for (let p = 0; p < np; p++) fP[p] = mult[p];
+        for (let q = 0; q < devPostes.length; q++) {
+          const p = devPostes[q];
+          fP[p] *= pDev[p] * ratio + (1 - pDev[p]);
+        }
+        for (let q = 0; q < nPairs; q++) {
+          const k = evK[q];
+          const f = forced[k];
+          if (f) {
+            if (evMonthly[k] ? t === f.from : t >= f.from) fP[evP[q]] *= 1 + evSign[k] * f.amp;
+          } else if (occ[k] && (evMonthly[k] ? t === mon[k] : t >= mon[k])) {
+            fP[evP[q]] *= 1 + evSign[k] * amp[k];
+          }
+        }
+        for (let q = 0; q < posteShocks.length; q++) {
+          const s = posteShocks[q];
+          if (t >= s.from) fP[s.p] *= s.factor;
+        }
+
         // Chiffre d'affaires d'abord : les postes à assiette CA et les points de marge en dépendent.
         let caTot = 0;
-        CAb.fill(0);
+        for (let b = 0; b < nb; b++) CAb[b] = 0;
         for (let q = 0; q < caPostes.length; q++) {
           const p = caPostes[q];
           const b = pB[p];
           let x = pAmt[p * 12 + t];
           if (pAss[p] === ASS_VOLUME) x *= V[b];
-          x *= P[b];
-          x = posteFactors(x, p, t);
+          x *= P[b] * fP[p];
           caTmp[p] = x;
           CAb[b] += x;
           caTot += x;
         }
 
-        rub.fill(0);
+        // Assiette chiffre d'affaires : rapport du chiffre d'affaires simulé au budget, par BU et pour l'entreprise.
+        for (let b = 0; b < nb; b++) caRatio[b] = caBud[b * 12 + t] > 0 ? CAb[b] / caBud[b * 12 + t] : 1;
+        const caRatioAll = caBudMonth[t] > 0 ? caTot / caBudMonth[t] : 1;
+        for (let r = 0; r < nr; r++) rub[r] = 0;
         for (let p = 0; p < np; p++) {
           let x: number;
-          const b = pB[p];
-          if (pCA[p]) x = caTmp[p];
-          else {
-            x = pAmt[p * 12 + t];
-            if (pAss[p] === ASS_VOLUME) x *= b >= 0 ? V[b] : volIdx;
-            else if (pAss[p] === ASS_CA) {
-              if (b >= 0) x *= caBud[b * 12 + t] > 0 ? CAb[b] / caBud[b * 12 + t] : 1;
-              else x *= caBudMonth[t] > 0 ? caTot / caBudMonth[t] : 1;
-            }
-            x = posteFactors(x, p, t);
+          const o = p * 12 + t;
+          switch (kind[p]) {
+            case K_CA: x = caTmp[p]; break;
+            case K_FIXE: x = pAmt[o] * fP[p]; break;
+            case K_VOL_BU: x = pAmt[o] * V[pB[p]] * fP[p]; break;
+            case K_VOL_ALL: x = pAmt[o] * volIdx * fP[p]; break;
+            case K_CA_BU: x = pAmt[o] * caRatio[pB[p]] * fP[p]; break;
+            default: x = pAmt[o] * caRatioAll * fP[p];
           }
           rub[pR[p]] += x;
-          if (detail && b >= 0) {
-            buMargin![i * nb + b] += rubSign[pR[p]] * x;
+          if (detail && pB[p] >= 0) {
+            buMargin![i * nb + pB[p]] += rubSign[pR[p]] * x;
             rubBU[pR[p]] += x;
           }
         }
-        for (let q = 0; q < m.marge.length; q++) {
-          const g = m.marge[q];
+        for (let q = 0; q < marges.length; q++) {
+          const g = marges[q];
           let base = caTot;
           if (g.mask) {
             base = 0;
@@ -244,11 +261,11 @@ export function runPL(m: Model, d: Draws, opt: PLOptions = {}): PLResult {
         }
         for (let k = 0; k < ne; k++) {
           const r = evSurcoutR[k];
-          if (r < 0 || e.eventNoCost[k]) continue;
-          const f = e.forced[k];
+          if (r < 0 || eventNoCost[k]) continue;
+          const f = forced[k];
           if (f ? t === f.from : occ[k] && t === mon[k]) rub[r] += cost[k];
         }
-        for (let r = 0; r < nr; r++) rub[r] += e.rubDelta[r * 12 + t];
+        for (let r = 0; r < nr; r++) rub[r] += rubDelta[r * 12 + t];
         if (e.bump >= 0) rub[e.bump] *= 1.01;
         for (let r = 0; r < nr; r++) {
           ebitda += rubSign[r] * rub[r];

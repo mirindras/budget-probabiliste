@@ -138,7 +138,7 @@ export function simulate({ scenario: s, budget, actuals, quick = false }: RunInp
   const errors = validateScenario(s, budget);
   if (errors.length) return { ok: false, errors };
   const reg = s.registre;
-  const model: Model = buildModel(budget, reg);
+  const model: Model = buildModel(budget, reg, s.stress);
   const mc = actuals ? Math.min(s.moisClos, actuals.lignes.length) : 0;
   const act = mc > 0 ? { lignes: actuals!.lignes.slice(0, mc), cours: actuals!.cours.slice(0, mc) } : undefined;
   const dernierCours = act && act.cours.length ? act.cours[mc - 1] : undefined;
@@ -239,7 +239,7 @@ export function objectives(budget: Budget): number[] {
 
 /** Tirages et P&L détaillés, pour les exports (le grain complet se recalcule à partir de la graine, R-PL-05). */
 export function detailedRun({ scenario: s, budget, actuals }: RunInput) {
-  const model = buildModel(budget, s.registre);
+  const model = buildModel(budget, s.registre, s.stress);
   const mc = actuals ? Math.min(s.moisClos, actuals.lignes.length) : 0;
   const act = mc > 0 ? { lignes: actuals!.lignes.slice(0, mc), cours: actuals!.cours.slice(0, mc) } : undefined;
   const d = drawAll(model, { n: s.n, graine: s.graine, moisClos: mc, dernierCours: act?.cours[mc - 1] });

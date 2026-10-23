@@ -12,7 +12,7 @@ FP&A probabiliste : budget, atterrissage, risque, backtest et arbitrages, sur un
 ![Données](https://img.shields.io/badge/données-synthétiques-5E6B7E)
 ![Langue](https://img.shields.io/badge/langue-français-5E6B7E)
 
-![Vitest](https://img.shields.io/badge/Vitest-150_tests-2B6E4A)
+![Vitest](https://img.shields.io/badge/Vitest-152_tests-2B6E4A)
 ![Playwright](https://img.shields.io/badge/Playwright-19_parcours-2B6E4A)
 ![Couverture](https://img.shields.io/badge/couverture-94_%25-2B6E4A)
 ![TypeScript](https://img.shields.io/badge/TypeScript-5-1769AA?logo=typescript&logoColor=white)
@@ -165,7 +165,7 @@ Pour les lecteurs Data, Software ou Quant, voici ce qui garantit des chiffres ju
 
 ## Architecture
 
-Une page web statique en TypeScript (Vite, Svelte 5). Le moteur n'a aucune dépendance et tourne dans un Web Worker, avec un repli automatique sur le fil principal si l'environnement interdit les workers : l'écran reste fluide pendant le calcul. Une simulation complète prend moins d'une demi-seconde.
+Une page web statique en TypeScript (Vite, Svelte 5). Le moteur n'a aucune dépendance et tourne dans un Web Worker, avec un repli automatique sur le fil principal si l'environnement interdit les workers : l'écran reste fluide pendant le calcul. Une simulation de 10 000 années prend environ 0,15 seconde ; leviers, analyses et douze contrôles compris, le calcul complet tient en une seconde environ.
 
 ```mermaid
 %%{init: {'theme': 'base', 'themeVariables': {'primaryColor': '#EEF2F6', 'primaryBorderColor': '#1769AA', 'primaryTextColor': '#172033', 'lineColor': '#5E6B7E', 'clusterBkg': '#F5F7FA', 'clusterBorder': '#DCE2EA', 'edgeLabelBackground': '#FFFFFF', 'fontFamily': 'system-ui, sans-serif'}}}%%
@@ -293,7 +293,7 @@ Sur une machine où Playwright n'a pas téléchargé son navigateur, indiquez un
 
 Décisions prises là où la SFD laissait une marge ; chacune est tracée dans le code. Les spécifications complètes sont dans [docs/SFD.md](docs/SFD.md).
 
-- **Modèle configurable.** Le moteur calcule au grain poste × mois : un volume agit sur le chiffre d'affaires de sa BU et sur les postes à assiette volume ou chiffre d'affaires, un prix sur le chiffre d'affaires, un facteur de poste sur les postes visés, le change sur la part en devises de chaque poste. ALFA n'est plus écrite dans le code : c'est une configuration parmi d'autres, et ses résultats sont identiques à ceux de la version précédente à 10⁻¹³ près.
+- **Modèle configurable.** Le moteur calcule au grain poste × mois : un volume agit sur le chiffre d'affaires de sa BU et sur les postes à assiette volume ou chiffre d'affaires, un prix sur le chiffre d'affaires, un facteur de poste sur les postes visés, le change sur la part en devises de chaque poste. ALFA n'est plus écrite dans le code : c'est une configuration parmi d'autres, et ses résultats sont identiques à ceux de la version précédente à 10⁻¹³ près. Les postes qui se calculent de la même façon (même rubrique, BU, assiette, part en devises, hypothèses, événements et stress tests) sont regroupés en lignes de calcul : sur un budget d'essai de 389 postes, 24 lignes, et un calcul complet en moins d'une seconde.
 - **Grain de saisie.** Le modèle générique se saisit par poste et par mois. L'ancien modèle détaillé d'un distributeur (432 lignes mois × BU × canal × famille pour ALFA) reste accepté : l'import l'agrège au grain BU × mois, ce qui donne exactement le même EBITDA.
 - **Points de marge.** Un point de marge en plus améliore toujours l'EBITDA, que la rubrique d'arrivée soit un produit ou une charge ; de même, le coût d'un levier pèse toujours sur l'EBITDA.
 - **Stress S2.** « E02 forcé » remplace la perte de grand compte simulée par une perte de 12 % dès avril, comme dans le prototype de référence.

@@ -20,7 +20,7 @@ export interface Effects {
   fxShock: { factor: number; from: number } | null;
   /** Événements forcés par un stress test : amplitude et mois de départ, à la place du tirage. */
   forced: ({ amp: number; from: number } | null)[];
-  /** Postes en hausse à partir d'un mois. */
+  /** Lignes de calcul (postes regroupés) en hausse à partir d'un mois. */
   posteShocks: { p: number; factor: number; from: number }[];
   /** Volumes en baisse à partir d'un mois, sur des BU. */
   volShocks: { factor: number; from: number; mask: Uint8Array }[];
@@ -104,7 +104,7 @@ export function buildEffects(m: Model, active: readonly CaseCode[], levers: Leve
         break;
       }
       case 'poste':
-        for (const p of postesOf(b, s.portee)) e.posteShocks.push({ p, factor: 1 + choc, from });
+        for (const g of shockedLines(m, postesOf(b, s.portee), s.code)) e.posteShocks.push({ p: g, factor: 1 + choc, from });
         break;
       case 'volume':
         e.volShocks.push({ factor: 1 - choc, from, mask: buMask(b, s.portee) });
@@ -112,6 +112,21 @@ export function buildEffects(m: Model, active: readonly CaseCode[], levers: Leve
     }
   }
   return e;
+}
+
+/**
+ * Lignes de calcul visées par un choc sur des postes. Chaque ligne doit être visée en entier : le modèle,
+ * compilé avec les stress tests du scénario, ne regroupe jamais un poste choqué avec un poste qui ne l'est pas.
+ */
+function shockedLines(m: Model, postes: number[], code: string): number[] {
+  const hit = new Map<number, number>();
+  for (const p of postes) hit.set(m.posteLine[p], (hit.get(m.posteLine[p]) ?? 0) + 1);
+  for (const [g, k] of hit) {
+    let size = 0;
+    for (let p = 0; p < m.posteLine.length; p++) if (m.posteLine[p] === g) size++;
+    if (k !== size) throw new Error(`Stress ${code} : modèle compilé sans ce stress test, ses postes sont regroupés avec d'autres`);
+  }
+  return [...hit.keys()].sort((a, c) => a - c);
 }
 
 /**

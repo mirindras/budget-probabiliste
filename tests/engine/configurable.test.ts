@@ -170,3 +170,46 @@ describe('du registre de départ à la note CODIR', () => {
     }
   });
 });
+
+describe('postes regroupés en lignes de calcul', () => {
+  /** BETA avec ses loyers éclatés en trois baux : même rubrique, même assiette, aucune hypothèse propre. */
+  function betaBaux(): Budget {
+    const b = betaBudget();
+    const loyers = b.postes.find((p) => p.code === 'LOYERS')!;
+    b.postes = b.postes.filter((p) => p !== loyers);
+    for (const [code, part] of [['BAIL_PARIS', 0.5], ['BAIL_LYON', 0.3], ['BAIL_LILLE', 0.2]] as const) {
+      b.postes.push({ ...loyers, code, libelle: code, montants: loyers.montants.map((x) => x * part) });
+    }
+    return b;
+  }
+  test('des postes de même comportement ne font qu\'une ligne, et le résultat ne change pas', () => {
+    const b = betaBaux();
+    const s = starterScenario(b);
+    const m = buildModel(b, s.registre);
+    expect(b.postes).toHaveLength(9);
+    expect(m.np).toBe(7);
+    expect(new Set(['BAIL_PARIS', 'BAIL_LYON', 'BAIL_LILLE'].map((c) => m.posteLine[b.postes.findIndex((p) => p.code === c)])).size).toBe(1);
+    const a = simulate({ scenario: { ...s, n: 3000 }, budget: betaBudget(), quick: true });
+    const c = simulate({ scenario: { ...s, n: 3000 }, budget: b, quick: true });
+    if (!a.ok || !c.ok) throw new Error('run');
+    for (let i = 0; i < 3000; i++) expect(c.annual[i]).toBeCloseTo(a.annual[i], 9);
+  });
+  test('un stress test qui vise un seul bail le sépare des autres, et ne choque que lui', () => {
+    const b = betaBaux();
+    const s = starterScenario(b);
+    const x = newStress(s, b, 'poste', 'Révision du bail de Paris');
+    x.portee = { postes: ['BAIL_PARIS'] };
+    x.mois = 1;
+    x.params = { choc: 0.1 };
+    s.stress.push(x);
+    const m = buildModel(b, s.registre, s.stress);
+    expect(m.np).toBe(8);
+    const bail = b.postes.find((p) => p.code === 'BAIL_PARIS')!.montants.reduce((u, v) => u + v, 0);
+    const d = pointDraws(m, budgetValues(m), fxDeterministic(m));
+    const at = (active: string[]) => runPL(m, d, { noise: false, events: false, effects: buildEffects(m, active, s.leviers, s.stress) }).annual[0];
+    expect(at([]) - at([x.code])).toBeCloseTo(0.1 * bail, 9);
+    // Compilé sans ce stress test, le modèle regroupe les baux : le choc est refusé plutôt que mal appliqué.
+    const m0 = buildModel(b, s.registre);
+    expect(() => buildEffects(m0, [x.code], s.leviers, s.stress)).toThrow(/regroupés/);
+  });
+});

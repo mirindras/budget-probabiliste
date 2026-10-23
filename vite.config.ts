@@ -11,6 +11,8 @@ export default defineConfig({
   test: {
     include: ['tests/engine/**/*.test.ts', 'tests/io/**/*.test.ts'],
     testTimeout: 60000,
+    // Les préparations calculent un run complet de référence : même délai que les tests eux-mêmes.
+    hookTimeout: 60000,
     coverage: { provider: 'v8', include: ['src/engine/**/*.ts', 'src/io/**/*.ts'], exclude: ['src/io/storage.ts'], reporter: ['text', 'html'] },
   },
 });

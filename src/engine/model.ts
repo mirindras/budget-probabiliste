@@ -1,10 +1,15 @@
 /**
  * Compilation du modèle : du budget (rubriques, postes, BU) et du registre (hypothèses, événements typés)
  * aux tableaux indexés que parcourt le moteur. Un modèle se compile une fois par run.
+ *
+ * Les postes qui se calculent exactement de la même façon (même rubrique, même BU, même assiette, même part
+ * en devises, mêmes hypothèses, mêmes événements, mêmes stress tests) sont regroupés en une ligne de calcul
+ * dont les montants sont la somme des leurs : un budget de quelques centaines de postes se ramène à quelques
+ * dizaines de lignes, sans changer le résultat.
  */
 import { setupCopula, type CopulaSetup } from './copula.ts';
 import { makeLaw, type Law } from './laws.ts';
-import { signOf, type Budget, type Hypothesis, type Portee, type Registry, type RiskEvent } from './types.ts';
+import { signOf, type Budget, type Hypothesis, type Portee, type Registry, type RiskEvent, type StressDef } from './types.ts';
 
 export const ASS_FIXE = 0;
 export const ASS_VOLUME = 1;
@@ -35,14 +40,19 @@ export interface Model {
   sigma: number;
   rubSign: Float64Array;
   rubCharge: Uint8Array;
-  /** Postes : rubrique, BU (-1 si commun), assiette, part en devises, montants (np × 12), chiffre d'affaires ou non. */
+  /**
+   * Lignes de calcul (postes regroupés) : rubrique, BU (-1 si commune), assiette, part en devises,
+   * montants (np × 12), chiffre d'affaires ou non. np est le nombre de lignes, pas de postes.
+   */
   pR: Int32Array;
   pB: Int32Array;
   pAss: Uint8Array;
   pDev: Float64Array;
   pAmt: Float64Array;
   pCA: Uint8Array;
-  /** Hypothèses d'effet « poste » et événements d'effet « poste » qui touchent chaque poste. */
+  /** Ligne de calcul de chaque poste du budget, dans l'ordre du budget. */
+  posteLine: Int32Array;
+  /** Hypothèses d'effet « poste » et événements d'effet « poste » qui touchent chaque ligne. */
   pHyps: Int32Array[];
   pEvents: Int32Array[];
   caPostes: Int32Array;
@@ -109,7 +119,11 @@ function caBudget(b: Budget): Float64Array {
   return out;
 }
 
-export function buildModel(budget: Budget, reg: Registry): Model {
+/**
+ * `stress` : stress tests du scénario. Un stress test qui vise des postes nommés empêche de regrouper
+ * ces postes avec d'autres, pour que son choc s'applique exactement à eux.
+ */
+export function buildModel(budget: Budget, reg: Registry, stress: StressDef[] = []): Model {
   const nb = budget.bu.length;
   const nr = budget.rubriques.length;
   const np = budget.postes.length;
@@ -128,21 +142,7 @@ export function buildModel(budget: Budget, reg: Registry): Model {
   const rubCharge = Uint8Array.from(budget.rubriques, (r) => (r.nature === 'charge' ? 1 : 0));
   const caRubs = new Set(budget.rubriques.filter((r) => r.nature === 'ca').map((r) => r.code));
 
-  const pR = new Int32Array(np);
-  const pB = new Int32Array(np);
-  const pAss = new Uint8Array(np);
-  const pDev = new Float64Array(np);
-  const pAmt = new Float64Array(np * 12);
-  const pCA = new Uint8Array(np);
-  budget.postes.forEach((p, i) => {
-    pR[i] = rubIndex.get(p.rubrique) ?? 0;
-    pB[i] = p.bu === null ? -1 : (buIndex.get(p.bu) ?? -1);
-    pAss[i] = p.assiette === 'volume' ? ASS_VOLUME : p.assiette === 'ca' ? ASS_CA : ASS_FIXE;
-    pDev[i] = p.devises;
-    for (let t = 0; t < 12; t++) pAmt[i * 12 + t] = p.montants[t];
-    pCA[i] = caRubs.has(p.rubrique) && pB[i] >= 0 ? 1 : 0;
-  });
-
+  // Hypothèses, événements et stress tests qui touchent chaque poste du budget, avant regroupement.
   const pHypsL: number[][] = Array.from({ length: np }, () => []);
   const volHypsL: number[][] = Array.from({ length: nb }, () => []);
   const prixHypsL: number[][] = Array.from({ length: nb }, () => []);
@@ -179,6 +179,41 @@ export function buildModel(budget: Budget, reg: Registry): Model {
     if (e.surcout && e.rubriqueSurcout !== undefined) evSurcoutR[k] = rubIndex.get(e.rubriqueSurcout) ?? -1;
   });
 
+  const pStressL: number[][] = Array.from({ length: np }, () => []);
+  stress.forEach((x, k) => {
+    if (x.type === 'poste' && x.portee.postes?.length) for (const p of postesOf(budget, x.portee)) pStressL[p].push(k);
+  });
+
+  // Regroupement des postes de même comportement en lignes de calcul, dans l'ordre de leur première apparition.
+  const lineOf = new Map<string, number>();
+  const posteLine = new Int32Array(np);
+  const lines: { r: number; b: number; ass: number; dev: number; ca: number; hyps: number[]; evs: number[]; amt: number[] }[] = [];
+  budget.postes.forEach((p, i) => {
+    const r = rubIndex.get(p.rubrique) ?? 0;
+    const b = p.bu === null ? -1 : (buIndex.get(p.bu) ?? -1);
+    const ass = p.assiette === 'volume' ? ASS_VOLUME : p.assiette === 'ca' ? ASS_CA : ASS_FIXE;
+    const ca = caRubs.has(p.rubrique) && b >= 0 ? 1 : 0;
+    const key = [r, b, ass, p.devises, ca, pHypsL[i].join(','), pEventsL[i].join(','), pStressL[i].join(',')].join('|');
+    let g = lineOf.get(key);
+    if (g === undefined) {
+      g = lines.length;
+      lineOf.set(key, g);
+      lines.push({ r, b, ass, dev: p.devises, ca, hyps: pHypsL[i], evs: pEventsL[i], amt: new Array(12).fill(0) });
+    }
+    posteLine[i] = g;
+    for (let t = 0; t < 12; t++) lines[g].amt[t] += p.montants[t];
+  });
+  const nLines = lines.length;
+  const pR = Int32Array.from(lines, (l) => l.r);
+  const pB = Int32Array.from(lines, (l) => l.b);
+  const pAss = Uint8Array.from(lines, (l) => l.ass);
+  const pDev = Float64Array.from(lines, (l) => l.dev);
+  const pCA = Uint8Array.from(lines, (l) => l.ca);
+  const pAmt = new Float64Array(nLines * 12);
+  lines.forEach((l, g) => {
+    for (let t = 0; t < 12; t++) pAmt[g * 12 + t] = l.amt[t];
+  });
+
   const caBud = caBudget(budget);
   const caBudMonth = new Float64Array(12);
   for (let b = 0; b < nb; b++) for (let t = 0; t < 12; t++) caBudMonth[t] += caBud[b * 12 + t];
@@ -190,16 +225,16 @@ export function buildModel(budget: Budget, reg: Registry): Model {
 
   const hFx = fxIndex >= 0 ? hyps[fxIndex] : null;
   return {
-    budget, reg, nb, nr, np, nh, ne, nd: nh + ne, codes, hyps, events, laws, fxIndex,
+    budget, reg, nb, nr, np: nLines, nh, ne, nd: nh + ne, codes, hyps, events, laws, fxIndex,
     fx: hFx ? { depart: hFx.depart!, derive: hFx.derive_annuelle!, vol: hFx.volatilite_mensuelle! * (hFx.k ?? 1) } : null,
     coursBudget: budget.change?.coursBudget ?? 1,
     copula: setupCopula(reg.correlations_rang, codes),
     phi: reg.bruit_volumes.phi,
     sigma: reg.bruit_volumes.sigma_mensuel,
-    rubSign, rubCharge, pR, pB, pAss, pDev, pAmt, pCA,
-    pHyps: pHypsL.map((x) => Int32Array.from(x)),
-    pEvents: pEventsL.map((x) => Int32Array.from(x)),
-    caPostes: Int32Array.from(budget.postes.map((_, i) => i).filter((i) => pCA[i])),
+    rubSign, rubCharge, pR, pB, pAss, pDev, pAmt, pCA, posteLine,
+    pHyps: lines.map((l) => Int32Array.from(l.hyps)),
+    pEvents: lines.map((l) => Int32Array.from(l.evs)),
+    caPostes: Int32Array.from(lines.map((_, g) => g).filter((g) => pCA[g])),
     volHyps: volHypsL.map((x) => Int32Array.from(x)),
     prixHyps: prixHypsL.map((x) => Int32Array.from(x)),
     marge,
